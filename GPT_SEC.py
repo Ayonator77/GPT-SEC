@@ -5,6 +5,10 @@ import pandas as pd
 from IPython.display import display, HTML
 from openai import OpenAI
 import tiktoken 
+from concurrent.futures import ThreadPoolExecutor
+
+
+
 queryAPI = QueryApi(api_key='041c38e656c459b1b336a7bea7d83c057482f669d2e663a1b6fa8864b2071550')
 extractorApi = ExtractorApi(api_key='041c38e656c459b1b336a7bea7d83c057482f669d2e663a1b6fa8864b2071550')
 OPENEAI_API_KEY = "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"
@@ -111,6 +115,36 @@ def split(text:str, prompt, max_token=4000):
     text_2 = text_encoding[mid_point::]
     return text_1, text_2
 
+def call_openai_api(chunk):
+    response = client.chat.completions.create(
+        model= "gpt-3.5-turbo",
+        messages=[{"role":"system", "content":"PASS IN ANY ARBITRARY SYSTEM VALUE TO GIVE THE AI AN IDENITY"},
+                  {"role":"user", "content":f"YOUR DATA TO PASS IN: {chunk}."}],
+        max_tokens=500,
+        n=1,
+        stop=None,
+        temperature=0.5
+    )
+    return response.choices[0].message.content.strip()
+
+def split_into_chunks(text, tokens=500):
+    encoding = tiktoken.get_encoding("cl100k_base")
+    words = encoding.encode(text)
+    chunks = []
+    for i in range(0, len(words), tokens):
+        chunks.append(' '.join(encoding.decode(words[i:i+tokens])))
+    return chunks
+
+def process_chunks(text):
+    chunks = split_into_chunks(text)
+    with ThreadPoolExecutor() as executor:
+        response = list(executor.map(call_openai_api, chunks))
+    return response
+
+
 if __name__ == "__main__":
     text = read_to_list(categories_10k)
-    t1, t2 = split(text[0], prompt="Summarize the following text for me mention the company name and the specifics.")
+    #t1, t2 = split(text[0], prompt="Summarize the following text for me mention the company name and the specifics.")
+    #chunks = split_into_chunks(text[10])
+    response = process_chunks(text[0])
+    print(response)
