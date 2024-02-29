@@ -2,7 +2,6 @@ from sec_api import QueryApi, ExtractorApi
 import json
 import requests
 import pandas as pd
-from IPython.display import display, HTML
 from openai import OpenAI
 import tiktoken 
 from concurrent.futures import ThreadPoolExecutor
@@ -65,45 +64,13 @@ def get_section_text(query:SEC_QUERY, section:str, index):
     final_json, filing_url, q_dict = EDGAR_CALL(query, index)
     return extractorApi.get_section(filing_url, section, "text")
 
-def read_to_list(categ):
+def read_to_list(categ,ticker):
     text_corpus = []
     for cat in categ:
-        with open("SEC_FILES/SEC_TSLA_"+cat+".txt") as file:
+        with open("SEC_FILES/SEC_"+ticker+"_"+cat+".txt") as file:
             text_corpus.append(file.read().replace('\n',' '))
     
     return text_corpus
-
-def token_chunk(text:str, max_token: int, prompt="Summarize the following text for me mention the company name and the specifics."):
-    encoding = tiktoken.get_encoding("cl100k_base")
-    token_int = encoding.encode(text) 
-
-    chunk_size = max_token - len(encoding.encode(prompt))
-
-    chunks = [token_int[i: i+chunk_size] for i in range(0, len(token_int), chunk_size)]
-
-    chunks = [encoding.decode(chunk) for chunk in chunks]
-    responses = []
-    message_construct = [{"role":"user", "content": "Summarize the following text for me mention the company name and the specifics."},
-                         {"role":"user", "content": "To provide the context for the above prompt, I will send you text in parts. When I am finished, I will tell you 'ALL PARTS SENT'. Do not answer until you have received all the parts. "}] #initial prompt
-
-    for chunk in chunks:
-        message_construct.append({"role":"user", "content":chunk})
-        while(sum(len(encoding.encode(msg["content"]))for msg in message_construct) > max_token):
-            message_construct.pop()
-        
-        response = client.chat.completions.create(
-            model = "gpt-3.5-turbo",
-            messages = message_construct
-        )
-        re_string = response.choices[0].message.content.strip()
-        responses.append(re_string)
-    
-    message_construct.append({"role": "user", "content": "ALL PARTS SENT"})
-
-    response = client.chat.completions.create(model = "gpt-3.5-turbo", messages = message_construct)
-    final_response = response.choices[0].message.content.strip()
-    responses.append(final_response)
-    return responses
 
 def split(text:str, prompt, max_token=4000):
     encoding = tiktoken.get_encoding("cl100k_base")
@@ -116,32 +83,6 @@ def split(text:str, prompt, max_token=4000):
     text_2 = text_encoding[mid_point::]
     return text_1, text_2
 
-
-def call_openai_api(chunk):
-    response = client.chat.completions.create(
-        model= "gpt-3.5-turbo",
-        messages=[{"role":"system", "content":"PASS IN ANY ARBITRARY SYSTEM VALUE TO GIVE THE AI AN IDENITY"},
-                  {"role":"user", "content":f"YOUR DATA TO PASS IN: {chunk}."}],
-        max_tokens=500,
-        n=1,
-        stop=None,
-        temperature=0.5
-    )
-    return response.choices[0].message.content.strip()
-
-def split_into_chunks(text, tokens=500):
-    encoding = tiktoken.get_encoding("cl100k_base")
-    words = encoding.encode(text)
-    chunks = []
-    for i in range(0, len(words), tokens):
-        chunks.append(' '.join(encoding.decode(words[i:i+tokens])))
-    return chunks
-
-def process_chunks(text):
-    chunks = split_into_chunks(text)
-    with ThreadPoolExecutor() as executor:
-        response = list(executor.map(call_openai_api, chunks))
-    return response
 
 def split_token(text:str, max_token: int, prompt="Summarize the following text for me."):
     encoding = tiktoken.get_encoding("cl100k_base")
@@ -167,7 +108,8 @@ def summary_(message):
     response = client.chat.completions.create(model="gpt-3.5-turbo", messages=message)
     return response.choices[0].message.content
 
-if __name__ == "__main__":
+
+def main(text):
     text = read_to_list(categories_10k)
     summaries = []
     for i in range(0, 9):
@@ -194,11 +136,22 @@ if __name__ == "__main__":
 
     for i in range(11, len(text)-1):
         summaries.append(summary_(construct_message(text[i])))
+
+    return summaries
+
+
+def write_to_file():
+    pass
+
+if __name__ == "__main__":
+    text = read_to_list(categories_10k)
+    summaries = main(text)
+
     
-    os.mkdir("OpenAI_Summary")
-    with open("OpenAI_Summary/Summary.txt", 'w') as f:
-        for sum in summaries:
-            f.write(f"{sum}\n")
+    # os.mkdir("OpenAI_Summary")
+    # with open("OpenAI_Summary/Summary.txt", 'w') as f:
+    #     for sum in summaries:
+    #         f.write(f"{sum}\n")
 
     print(summaries)
     #t1, t2 = split(text[0], prompt="Summarize the following text for me mention the company name and the specifics.")
