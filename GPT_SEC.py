@@ -68,7 +68,7 @@ def get_section_text(query:SEC_QUERY, section:str, index):
 def read_to_list(categ):
     text_corpus = []
     for cat in categ:
-        with open("SEC_TSLA_"+cat+".txt") as file:
+        with open("SEC_FILES/SEC_TSLA_"+cat+".txt") as file:
             text_corpus.append(file.read().replace('\n',' '))
     
     return text_corpus
@@ -116,6 +116,7 @@ def split(text:str, prompt, max_token=4000):
     text_2 = text_encoding[mid_point::]
     return text_1, text_2
 
+
 def call_openai_api(chunk):
     response = client.chat.completions.create(
         model= "gpt-3.5-turbo",
@@ -142,11 +143,63 @@ def process_chunks(text):
         response = list(executor.map(call_openai_api, chunks))
     return response
 
+def split_token(text:str, max_token: int, prompt="Summarize the following text for me."):
+    encoding = tiktoken.get_encoding("cl100k_base")
+    token_int = encoding.encode(text)
+
+    chunk_size =  max_token - len(encoding.encode(prompt))
+    c_lsit = [token_int[i: i+chunk_size] for i in range(0, len(token_int), chunk_size)]
+    c_list = [encoding.decode(chunk) for chunk in c_lsit]
+
+    return c_list, prompt
+
+def construct_message(text):
+    text_chunk, prompt = split_token(text, max_token=4000)
+    message_const = [{"role":"user", "content":prompt}, 
+                     {"role":"user", "content": "To provide the context for the above prompt, I will send you text in parts. When I am finished, I will tell you 'ALL PARTS SENT'. Do not answer until you have received all the parts. "}]
+    for chunk in text_chunk:
+        message_const.append({"role":"user", "content":chunk})
+        
+    message_const.append({"role": "user", "content": "ALL PARTS SENT"})
+    return message_const
+
+def summary_(message):
+    response = client.chat.completions.create(model="gpt-3.5-turbo", messages=message)
+    return response.choices[0].message.content
 
 if __name__ == "__main__":
     text = read_to_list(categories_10k)
-    os.mkdir("SEC_FILES")
+    summaries = []
+    for i in range(0, 9):
+        summaries.append(summary_(construct_message(text[i])))
+    
+    first_half, second_half = split(text[10], "Summarize the following text for me")
+
+    mess_init = [{"role": "user", "content": "Summarize the following text for me"}]
+    mess_init.append({"role":"user", "content": first_half[0]})
+
+    mess2 = [{"role": "user", "content": "Summarize the following text for me"}]
+    mess2.append({"role":"user", "content": second_half[0]})
+
+    sum1 = summary_(mess_init)
+    sum2 = summary_(mess2)
+
+    message_final = [{"role": "user", "content": "Summarize and combine these two summaries (They are from different halves of the same text), I will say ALL PARTS SENT when i want you to summarize"}]
+    message_final.append({"role": "user", "content": sum1})
+    message_final.append({"role": "user", "content": sum2})
+    message_final.append({"role": "user", "content": "ALL PARTS SENT"})
+
+    final_sum = summary_(message_final)
+    summaries.append(final_sum)
+
+    for i in range(11, len(text)-1):
+        summaries.append(summary_(construct_message(text[i])))
+    
+    os.mkdir("OpenAI_Summary")
+    with open("OpenAI_Summary/Summary.txt", 'w') as f:
+        for sum in summaries:
+            f.write(f"{sum}\n")
+
+    print(summaries)
     #t1, t2 = split(text[0], prompt="Summarize the following text for me mention the company name and the specifics.")
     #chunks = split_into_chunks(text[10])
-    for cat in categories_10k:
-        shutil.move("SEC_TSLA_"+cat+".txt", "SEC_FILES/SEC_TSLA_"+cat+".txt")
