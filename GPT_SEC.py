@@ -6,7 +6,8 @@ from IPython.display import display, HTML
 from openai import OpenAI
 import tiktoken 
 from concurrent.futures import ThreadPoolExecutor
-
+import shutil
+import os
 
 
 queryAPI = QueryApi(api_key='041c38e656c459b1b336a7bea7d83c057482f669d2e663a1b6fa8864b2071550')
@@ -144,7 +145,8 @@ def process_chunks(text):
 
 if __name__ == "__main__":
     text = read_to_list(categories_10k)
+    os.mkdir("SEC_FILES")
     #t1, t2 = split(text[0], prompt="Summarize the following text for me mention the company name and the specifics.")
     #chunks = split_into_chunks(text[10])
-    response = process_chunks(text[0])
-    print(response)
+    for cat in categories_10k:
+        shutil.move("SEC_TSLA_"+cat+".txt", "SEC_FILES/SEC_TSLA_"+cat+".txt")
