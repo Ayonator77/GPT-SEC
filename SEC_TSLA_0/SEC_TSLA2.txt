@@ -1,0 +1,8 @@
+ ITEM 2. PROPERTIES 
+
+We are headquartered in Austin, Texas. Our principal facilities include a large number of properties in North America, Europe and Asia utilized for manufacturing and assembly, warehousing, engineering, retail and service locations, Supercharger sites and administrative and sales offices. Our facilities are used to support both of our reporting segments, and are suitable and adequate for the conduct of our business. We generally lease such facilities with the primary exception of some manufacturing facilities. The following table sets forth the location of our primary owned and leased manufacturing facilities. 
+
+##TABLE_START Primary Manufacturing Facilities Location Owned or Leased Gigafactory Texas Austin, Texas Owned Fremont Factory Fremont, California Owned Gigafactory Nevada Sparks, Nevada Owned Gigafactory Berlin-Brandenburg Grunheide, Germany Owned Gigafactory Shanghai Shanghai, China * Gigafactory New York Buffalo, New York Leased Megafactory Lathrop, California Leased ##TABLE_END
+
+* We own the building and the land use rights with an initial term of 50 years. The land use rights are treated as operating lease right-of-use assets. 
+
