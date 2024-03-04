@@ -51,6 +51,9 @@ class SEC_QUERY:
         response = queryAPI.get_filings(self.query)
         return json.dumps(response["filings"][index], indent=2)
     
+    def get_size(self):
+        return self.size
+    
     def get_filing(self): #get full query
         return queryAPI.get_filings(self.query)
 
@@ -78,10 +81,10 @@ def get_section_text(query:SEC_QUERY, section:str, index):
     return extractorApi.get_section(filing_url, section, "text")
 
 #read text file, takes in category list and stock ticker
-def read_to_list(categ,ticker):
+def read_to_list(categ,ticker, index):
     text_corpus = []
     for cat in categ:
-        with open("SEC_FILES/SEC_"+ticker+"_"+cat+".txt") as file:
+        with open("SEC_"+ticker+"_"+str(index)+"/SEC_"+ticker+cat+".txt") as file:
             text_corpus.append(file.read().replace('\n',' '))
     return text_corpus
 
@@ -161,10 +164,6 @@ def main(text):
     return summaries
 
 
-def download():
-    dl = Downloader("SCS",email_address="ayodejiodetola@gmail.com")
-    dl.get("10-K", "TSLA", include_amends=True)
-
 def write_to_file(ticker:str, categories, size):
     query = SEC_QUERY("10-K", ticker, size)
     size_int = int(size)
@@ -177,76 +176,34 @@ def write_to_file(ticker:str, categories, size):
             with open(folder+"/SEC_"+ticker+cat+".txt", "w") as f:
                 f.write(section)
 
-def read_html(file_path:str):
-    try:
-        html_file = open(file_path, "r")
-        index = html_file.read()
-        s = BeautifulSoup(index, 'lxml')
-        return s.get_text(separator=' ', strip='\n')
-    except FileNotFoundError:
-        print("File path not found")
-
-def to_search(match_elem):
-    list_match = match_elem.split(" ")
-    list_match[0] = list_match[0].capitalize()
-    return ' '.join(list_match)
-
-def get_section(section:str, filing_text):
-    # Remove these characters and replace them with empty string
-    filing_text = re.sub('\xa0','', filing_text)
-    filing_text = re.sub('\n', '',filing_text)
-    filing_text = re.sub('\t','', filing_text)
-    #print("file test",filing_text[0:1000])
-    if section[-1] != '.':
-        section+='.'
-    #Match all the ITEM elements in document
-    matches = list(re.finditer(re.compile('(Item|ITEM)\s?\d{0,2}[A-Z]?\.'),filing_text))
-    section_list = [m[0] for m in matches]
-    #print(len(section_list), section_list)
-    #print(type(matches))
-    for i in range(len(matches)):
-        print(matches[i][0])
-    assert section in section_list, f"The section should be in the list {section_list}"
-    item_matches = [i for i in range(len(matches)) if matches[i][0] == section]
-    #print("Item matches: ", item_matches)
-
-    section_name = ''
-    if len(item_matches) >= 1:
-        section_name_start = min(item_matches)
-        section_name_end = section_name_start+1
-        start = matches[section_name_start].span()[1]
-        end = matches[section_name_end].span()[0]
-
-        section_name = filing_text[start:end]
-        section_name = re.sub('\d', '', section_name)
-    
-    start = max(item_matches)
-    end = start+1
-    start = matches[start].span()[1]
-    end = matches[end].span()[0]+10000
-    #print(start, end)
-
-    section_text = filing_text[start:end]
-    section_text = re.sub(section_name, '', section_text, count=1)
-    section_text = re.sub(section_name.upper(), '', section_text, count=1)
-    return section_text, section_name.strip()
-
-
-def preprocess_data(section_text):
-    word_tokens = word_tokenize(section_text)
-    sentence = []
-
-    for word in word_tokens:
-        sentence.append(word)
-    
-    lemmatizer  = WordNetLemmatizer()
-    sentence = [lemmatizer.lemmatize(plural) for plural in sentence]
-    return sentence
 
 def get_sentiment(sentence):
     sentiment_categories  =  ['Negative', 'Positive', 'Uncertainty', 'Litigious', 'Strong_Modal', 'Weak_Modal', 'Constraining']
     #all_words = list(sent_df())
     sentiment_dict = {key:0 for key in sentiment_categories}
+
+def historical_summary(query:SEC_QUERY):
+    size = query.get_size()
+    size = 4 #comment out when obtained EDGAR api keys
+    summary_list = [] #[[sec_size: 1, 1A,.., 15], [sec_size-1: 1, 1A,...15],....[sec_0: 1, 1A,...15]]
+    for index in range(size, -1, -1 ):
+        text = read_to_list(categories_10k, "TSLA", index)
+        summary_list.append(main(text))
+
+    message = [{"role":"User", "content": "Summarize and combine the text below"}]
+    for summary in summary_list:
+        for line in summary:
+            pass
+
+
+def sentiment_analysis(text):
+    nlp = pipeline("sentiment-analysis",model=finbert, tokenizer=tokenizer)
+    result_list = []
+    for line in text:
+        result_list.append(nlp(line))
+    return result_list
+
+
 
 if __name__ == "__main__":
     #text = read_to_list(categories_10k)
