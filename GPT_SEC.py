@@ -28,15 +28,16 @@ client = OpenAI(api_key=OPENEAI_API_KEY)
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
 
 
-"""
-    Create class structure for EDGAR API query
-    class argument:
-    form_type -- (10-K, 10-Q...etc)
-    ticker -- Stock ticker, ("TSLA", "AAPl"...etc)
-    size -- Determines how far back the query goes
-"""
 class SEC_QUERY:
+    """
+    Create class structure for EDGAR API query
 
+    Attributes:
+        form_type -- (10-K, 10-Q...etc)
+        ticker -- Stock ticker, ("TSLA", "AAPl"...etc)
+        size -- Determines how far back the query goes
+
+    """
     def __init__(self, form_type, ticker, size):
         self.form_type = form_type
         self.ticker = ticker
@@ -54,16 +55,28 @@ class SEC_QUERY:
         }
     
     def get_response(self, index:int):
+        """
+        Gets the filing dictionary at a specific index
+        Parameters:
+            index -- index of the filing you want given a query
+        Returns:
+            filings in dictionary format 
+        """
         response = queryAPI.get_filings(self.query)
         return json.dumps(response["filings"][index], indent=2)
     
-    def get_size(self):
-        return self.size
-    
-    def get_filing(self): #get full query
+    def get_filing(self):
+        """Gets the full query for sec_api"""
         return queryAPI.get_filings(self.query)
 
     def extract(self, index:int): #use extraction api to get text and tabular data
+        """
+        Uses extraction api to get text and tabular data
+        Parameters:
+            index -- index of the filing you are looking for, cannot exceed self.size
+        Returns:
+            tuple -- (extracted json, url for extraction, initial filing dictionary)
+        """
         query_str = self.get_response(index)
         q_dict = json.loads(query_str)
         filing_url = q_dict['linkToHtml']
@@ -81,21 +94,43 @@ class SEC_QUERY:
 def EDGAR_CALL(query:SEC_QUERY, index:int):
     return query.extract(index)
 
-#Gets text data from a 10k section i.e. category_list = [1, 1A, 1B, 2, 3, 4, 5, 6, 7, 7A, 8, 9, 9A, 9B, 10, 11, 12, 13, 14, 15]
 def get_section_text(query:SEC_QUERY, section:str, index:int):
+    """
+    Get text data from a 10k section i.e. category_list = [1, 1A, 1B, 2, 3, 4, 5, 6, 7, 7A, 8, 9, 9A, 9B, 10, 11, 12, 13, 14, 15]
+    Parameters:
+        query -- SEC_QUERY instance
+        index -- filing index
+    Returns:
+        string of section text
+    """
     final_json, filing_url, q_dict = EDGAR_CALL(query, index)
     return extractorApi.get_section(filing_url, section, "text")
 
 #read text file, takes in category list and stock ticker
-def read_to_list(categ,ticker):
+"""
+    Reads text file
+    Keyword arguments:
+    categ -- list of categories based on form type
+    ticker -- Stock ticker, ("TSLA", "AAPl"...etc)
+"""
+def read_to_list(categ,ticker) -> list:
     text_corpus = []
     for cat in categ:
-        with open("SEC_"+ticker+"_"+str(index)+"/SEC_"+ticker+cat+".txt") as file:
+        with open("SEC_FILES/SEC_"+ticker+"_"+cat+".txt") as file:
             text_corpus.append(file.read().replace('\n',' '))
     return text_corpus
 
-#splitting text corpus into 2 parts for the purpose of passing it through openai api
-def split(text:str, prompt, max_token=4000):
+
+def split(text:str, prompt:str, max_token=4000):
+    """
+    Splitting text body into 2 parts (specifically for section 8 of form 10-K) to be able to pass through OpenAi api
+    Parameters:
+        text -- Section text that needs to be split
+        prompt -- Initial prompt 
+        max_token -- max token size for gpt-3.5-turbo, used to chunk the text
+    Returns:
+        tuple -- text_1, text_2 which is the text data split in half
+    """
     #gives encoding for gpt-3.5-turbo and gpt-4
     encoding = tiktoken.get_encoding("cl100k_base")
     token_int = encoding.encode(text)
@@ -112,6 +147,15 @@ def split(text:str, prompt, max_token=4000):
 
 
 def split_token(text:str, max_token: int, prompt="Summarize the following text for me."):
+    """
+    Takes text data and breaks it up into chunks to pass through gpt-3.5-turbo
+    Parameters:
+        text -- section data as a string
+        max-token -- maximum token size for gpt-3.5-turbo 
+        prompt -- initial prompt
+    Returns:
+    tuple (c_list, prompt) -- chunked list and initial prompt
+    """
     encoding = tiktoken.get_encoding("cl100k_base") 
     token_int = encoding.encode(text)
 
@@ -122,8 +166,15 @@ def split_token(text:str, max_token: int, prompt="Summarize the following text f
 
     return c_list, prompt
 
-#Constructs the message parameter in client.chat.completions.create function, these are the prompts
+
 def construct_message(text):
+    """
+    Chunks text data and construct a message dictionary for OpenAI api 
+    Parameters:
+        text -- section text for given form type
+    Returns:
+        message_const -- list of dictionaries [{role: user, content: text_chunk_1}, ....]
+    """
     #breaks text into chunks, each chunk is a prompt
     text_chunk, prompt = split_token(text, max_token=4000) 
     message_const = [{"role":"user", "content":prompt}, #initial prompt asking gpt to summarize the text
@@ -136,19 +187,29 @@ def construct_message(text):
     message_const.append({"role": "user", "content": "ALL PARTS SENT"})
     return message_const
 
-"""
-    Calls OpenAi api to summmarize text
-    Keyword arguments:
-    message -- message dictionary 
-"""
+
 def summary_(message) -> str:
+    """
+    Calls OpenAi api to summmarize text
+    Parameters:
+        message -- message list of dictionary [{role: user, content: prompt 1}, ...,{role: user, content: prompt n}]
+    Returns:
+        string -- gpt-3.5-turbo response to message dictionary as prompt
+    """
     response = client.chat.completions.create(model="gpt-3.5-turbo", messages=message)
     #return the response as a string
     return response.choices[0].message.content 
 
 
-def main(text):
-    text = read_to_list(categories_10k)
+def main(text:list):
+    """
+    Generates a list of section summaries
+    Parameters:
+        text -- list of text data, each item is a section i.e [section 1, section 1A,...., section 15]
+    returns:
+        summaries -- list of summaries of categories [summary 1, summary 1A, ...., summary 15]
+    """
+    #text = read_to_list(categories_10k)
     summaries = []
     for i in range(0, 9):
         #summarize all 10-k categories from 1-7A excluding 8 since the text is too large
@@ -185,11 +246,14 @@ def main(text):
     return summaries
 
 
-def download():
-    dl = Downloader("SCS",email_address="ayodejiodetola@gmail.com")
-    dl.get("10-K", "TSLA", include_amends=True)
-
-def write_to_file(ticker:str, categories, size):
+def write_to_file(ticker:str, categories:list, size:str):
+    """
+    Writes SEC filing to folder
+    Parameters:
+        ticker -- Stock ticker
+        categories -- Category for form type
+        size -- size of the filing query
+    """
     query = SEC_QUERY("10-K", ticker, size)
     size_int = int(size)
     for i in range(size_int):
@@ -201,127 +265,15 @@ def write_to_file(ticker:str, categories, size):
             with open(folder+"/SEC_"+ticker+cat+".txt", "w") as f:
                 f.write(section)
 
-def read_html(file_path:str):
-    try:
-        html_file = open(file_path, "r")
-        index = html_file.read()
-        s = BeautifulSoup(index, 'lxml')
-        return s.get_text(separator=' ', strip='\n')
-    except FileNotFoundError:
-        print("File path not found")
-
-def to_search(match_elem):
-    list_match = match_elem.split(" ")
-    list_match[0] = list_match[0].capitalize()
-    return ' '.join(list_match)
-
-def get_section(section:str, filing_text):
-    # Remove these characters and replace them with empty string
-    filing_text = re.sub('\xa0','', filing_text)
-    filing_text = re.sub('\n', '',filing_text)
-    filing_text = re.sub('\t','', filing_text)
-    #print("file test",filing_text[0:1000])
-    if section[-1] != '.':
-        section+='.'
-    #Match all the ITEM elements in document
-    matches = list(re.finditer(re.compile('(Item|ITEM)\s?\d{0,2}[A-Z]?\.'),filing_text))
-    section_list = [m[0] for m in matches]
-    #print(len(section_list), section_list)
-    #print(type(matches))
-    for i in range(len(matches)):
-        print(matches[i][0])
-    assert section in section_list, f"The section should be in the list {section_list}"
-    item_matches = [i for i in range(len(matches)) if matches[i][0] == section]
-    #print("Item matches: ", item_matches)
-
-    section_name = ''
-    if len(item_matches) >= 1:
-        section_name_start = min(item_matches)
-        section_name_end = section_name_start+1
-        start = matches[section_name_start].span()[1]
-        end = matches[section_name_end].span()[0]
-
-        section_name = filing_text[start:end]
-        section_name = re.sub('\d', '', section_name)
-    
-    start = max(item_matches)
-    end = start+1
-    start = matches[start].span()[1]
-    end = matches[end].span()[0]+10000
-    #print(start, end)
-
-    section_text = filing_text[start:end]
-    section_text = re.sub(section_name, '', section_text, count=1)
-    section_text = re.sub(section_name.upper(), '', section_text, count=1)
-    return section_text, section_name.strip()
-
-
-def preprocess_data(section_text):
-    word_tokens = word_tokenize(section_text)
-    sentence = []
-
-    for word in word_tokens:
-        sentence.append(word)
-    
-    lemmatizer  = WordNetLemmatizer()
-    sentence = [lemmatizer.lemmatize(plural) for plural in sentence]
-    return sentence
 
 def get_sentiment(sentence):
     sentiment_categories  =  ['Negative', 'Positive', 'Uncertainty', 'Litigious', 'Strong_Modal', 'Weak_Modal', 'Constraining']
     #all_words = list(sent_df())
     sentiment_dict = {key:0 for key in sentiment_categories}
 
-def historical_summary(query:SEC_QUERY):
-    size = query.get_size()
-    size = 4 #comment out when obtained EDGAR api keys
-    summary_list = [] #[[sec_size: 1, 1A,.., 15], [sec_size-1: 1, 1A,...15],....[sec_0: 1, 1A,...15]]
-    for index in range(size, -1, -1 ):
-        text = read_to_list(categories_10k, "TSLA", index)
-        summary_list.append(main(text))
-
-    message = [{"role":"User", "content": "Summarize and combine the text below"}]
-    for summary in summary_list:
-        for line in summary:
-            pass
-
-
-def sentiment_analysis(text):
-    nlp = pipeline("sentiment-analysis",model=finbert, tokenizer=tokenizer)
-    result_list = []
-    for line in text:
-        result_list.append(nlp(line))
-    return result_list
-
-
-
 if __name__ == "__main__":
-    text = read_to_list(categories_10k, "TSLA", 0)
-    encoding = tiktoken.get_encoding("cl100k_base") 
-    num_tokens = len(encoding.encode(text[10]))
-    print("Token Size: ",num_tokens)
-    #summaries = main(text)
-    #write_to_file("TSLA", categories_10k, "10")
-
-    # summary = open("OpenAI_Summary\Summary.txt")
-    # summary_lines = summary.readlines()
-    # #prepro = preprocess_data(summary_lines[0])
-    
-    # nlp = pipeline("sentiment-analysis",model=finbert, tokenizer=tokenizer)
-    # for line in summary_lines:
-    #     results = nlp(line)
-    #     print(results)
-
-
-    # string = read_html('C:/Users/Owner/GPT-SEC/sec-edgar-filings/TSLA/10-K/0000950170-23-001409/full-submission.txt')
-    # #print(type(string))
-    # str1, str2 = get_section("Item 8.", string)
-    # print(str1)
-    # os.mkdir("OpenAI_Summary")
-    # with open("OpenAI_Summary/Summary.txt", 'w') as f:
-    #     for sum in summaries:
-    #         f.write(f"{sum}\n")
-
-
-    #t1, t2 = split(text[0], prompt="Summarize the following text for me mention the company name and the specifics.")
-    #chunks = split_into_chunks(text[10])
+    text = read_to_list(categories_10k)
+    summaries = main(text)
+    nlp = pipeline("sentiment-analysis",model=finbert, tokenizer=tokenizer)
+    for summ in summaries:
+        print(nlp(summ))
