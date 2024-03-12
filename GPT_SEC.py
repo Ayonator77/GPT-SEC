@@ -206,9 +206,13 @@ def sentiment_analysis(text):
 
 
 if __name__ == "__main__":
-    #text = read_to_list(categories_10k)
+    text = read_to_list(categories_10k, "TSLA", 0)
+    encoding = tiktoken.get_encoding("cl100k_base") 
+    num_tokens = len(encoding.encode(text[10]))
+    print("Token Size: ",num_tokens)
     #summaries = main(text)
-    write_to_file("TSLA", categories_10k, "10")
+    #write_to_file("TSLA", categories_10k, "10")
+
     # summary = open("OpenAI_Summary\Summary.txt")
     # summary_lines = summary.readlines()
     # #prepro = preprocess_data(summary_lines[0])
