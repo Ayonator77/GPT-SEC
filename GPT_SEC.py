@@ -18,6 +18,7 @@ from tqdm import tqdm
 from transformers import BertTokenizer, BertForSequenceClassification
 from transformers import pipeline
 
+
 finbert = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone',num_labels=3)
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone')
 
