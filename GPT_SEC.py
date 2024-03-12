@@ -7,7 +7,7 @@ import tiktoken
 from concurrent.futures import ThreadPoolExecutor
 import shutil
 import os
-from sec_edgar_downloader import Downloader
+#from sec_edgar_downloader import Downloader
 from bs4 import BeautifulSoup
 import re
 import nltk
@@ -27,8 +27,14 @@ OPENEAI_API_KEY = "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"
 client = OpenAI(api_key=OPENEAI_API_KEY)
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
 
-#Class to structure EDGAR API query and get SEC filings
-#Each instance of SEC_QUERY needs a form type (10-K, 10-Q...etc) a stock ticker("TSLA", "AAPl"...etc) and a size which determines how far back the query goes
+
+"""
+    Create class structure for EDGAR API query
+    class argument:
+    form_type -- (10-K, 10-Q...etc)
+    ticker -- Stock ticker, ("TSLA", "AAPl"...etc)
+    size -- Determines how far back the query goes
+"""
 class SEC_QUERY:
 
     def __init__(self, form_type, ticker, size):
@@ -69,16 +75,22 @@ class SEC_QUERY:
         return final_json, filing_url, q_dict
 
 
-def EDGAR_CALL(query:SEC_QUERY, index):
+def EDGAR_CALL(query:SEC_QUERY, index:int):
     return query.extract(index)
 
 #Gets text data from a 10k section i.e. category_list = [1, 1A, 1B, 2, 3, 4, 5, 6, 7, 7A, 8, 9, 9A, 9B, 10, 11, 12, 13, 14, 15]
-def get_section_text(query:SEC_QUERY, section:str, index):
+def get_section_text(query:SEC_QUERY, section:str, index:int):
     final_json, filing_url, q_dict = EDGAR_CALL(query, index)
     return extractorApi.get_section(filing_url, section, "text")
 
 #read text file, takes in category list and stock ticker
-def read_to_list(categ,ticker):
+"""
+    Reads text file
+    Keyword arguments:
+    categ -- list of categories based on form type
+    ticker -- Stock ticker, ("TSLA", "AAPl"...etc)
+"""
+def read_to_list(categ,ticker) -> list:
     text_corpus = []
     for cat in categ:
         with open("SEC_FILES/SEC_"+ticker+"_"+cat+".txt") as file:
@@ -87,23 +99,27 @@ def read_to_list(categ,ticker):
 
 #splitting text corpus into 2 parts for the purpose of passing it through openai api
 def split(text:str, prompt, max_token=4000):
-    encoding = tiktoken.get_encoding("cl100k_base") #gives encoding for gpt-3.5-turbo and gpt-4
+    #gives encoding for gpt-3.5-turbo and gpt-4
+    encoding = tiktoken.get_encoding("cl100k_base")
     token_int = encoding.encode(text)
     chunk_size =  max_token - len(encoding.encode(prompt))
-    text_encoding = [token_int[i: i+chunk_size] for i in range(0, len(token_int), chunk_size)] #chunk the encoded text
+    #chunk the encoded text
+    text_encoding = [token_int[i: i+chunk_size] for i in range(0, len(token_int), chunk_size)]
     text_encoding = [encoding.decode(chunk) for chunk in text_encoding] #decode the text
     #Split the list in half
     mid_point = (len(text_encoding) - 1) // 2
     text_1 = text_encoding[0:mid_point]
     text_2 = text_encoding[mid_point::]
-    return text_1, text_2 #returns both halves as a list
+    #returns both halves as a list
+    return text_1, text_2
 
 
 def split_token(text:str, max_token: int, prompt="Summarize the following text for me."):
-    encoding = tiktoken.get_encoding("cl100k_base") #gives encoding for gpt-3.5-turbo and gpt-4
+    encoding = tiktoken.get_encoding("cl100k_base") 
     token_int = encoding.encode(text)
 
-    chunk_size =  max_token - len(encoding.encode(prompt)) #set chunk_size gpt-3.5-turbo token size cannot surpass 4000
+    #set chunk_size gpt-3.5-turbo token size cannot surpass 4000
+    chunk_size =  max_token - len(encoding.encode(prompt))
     c_lsit = [token_int[i: i+chunk_size] for i in range(0, len(token_int), chunk_size)]
     c_list = [encoding.decode(chunk) for chunk in c_lsit]
 
@@ -111,28 +127,38 @@ def split_token(text:str, max_token: int, prompt="Summarize the following text f
 
 #Constructs the message parameter in client.chat.completions.create function, these are the prompts
 def construct_message(text):
-    text_chunk, prompt = split_token(text, max_token=4000) #breaks text into chunks, each chunk is a prompt
+    #breaks text into chunks, each chunk is a prompt
+    text_chunk, prompt = split_token(text, max_token=4000) 
     message_const = [{"role":"user", "content":prompt}, #initial prompt asking gpt to summarize the text
                      {"role":"user", "content": "To provide the context for the above prompt, I will send you text in parts. When I am finished, I will tell you 'ALL PARTS SENT'. Do not answer until you have received all the parts. "}]
     for chunk in text_chunk:
-        message_const.append({"role":"user", "content":chunk}) #adding each chunk as a prompt 
-        
-    message_const.append({"role": "user", "content": "ALL PARTS SENT"}) #indicator for gpt to start the summary
+        #adding each chunk as a prompt 
+        message_const.append({"role":"user", "content":chunk})
+    
+    #indicator for gpt to start the summary
+    message_const.append({"role": "user", "content": "ALL PARTS SENT"})
     return message_const
 
-#call openai api
-def summary_(message):
+"""
+    Calls OpenAi api to summmarize text
+    Keyword arguments:
+    message -- message dictionary 
+"""
+def summary_(message) -> str:
     response = client.chat.completions.create(model="gpt-3.5-turbo", messages=message)
-    return response.choices[0].message.content #return the response as a string
+    #return the response as a string
+    return response.choices[0].message.content 
 
 
 def main(text):
     text = read_to_list(categories_10k)
     summaries = []
     for i in range(0, 9):
-        summaries.append(summary_(construct_message(text[i]))) #summarize all 10-k categories from 1-7A excluding 8 since the text is too large
+        #summarize all 10-k categories from 1-7A excluding 8 since the text is too large
+        summaries.append(summary_(construct_message(text[i])))
     
-    first_half, second_half = split(text[10], "Summarize the following text for me") #split category 8(FINANCIAL STATEMENTS AND SUPPLEMENTARY DATA )
+    #split category 8(FINANCIAL STATEMENTS AND SUPPLEMENTARY DATA )
+    first_half, second_half = split(text[10], "Summarize the following text for me")
 
     #construct prompts for the first half of category 8
     mess_init = [{"role": "user", "content": "Summarize the following text for me"}]
@@ -155,17 +181,14 @@ def main(text):
     final_sum = summary_(message_final)
     summaries.append(final_sum)
 
-    for i in range(11, len(text)-1):#summarize all 10-K categories from categories 9-15
+    #summarize all 10-K categories from categories 9-15
+    for i in range(11, len(text)-1):
         summaries.append(summary_(construct_message(text[i])))
 
     return summaries
 
 
-def download():
-    dl = Downloader("SCS",email_address="ayodejiodetola@gmail.com")
-    dl.get("10-K", "TSLA", include_amends=True)
-
-def write_to_file(ticker:str, categories, size):
+def write_to_file(ticker:str, categories:list, size:str):
     query = SEC_QUERY("10-K", ticker, size)
     size_int = int(size)
     for i in range(size_int):
@@ -185,51 +208,6 @@ def read_html(file_path:str):
         return s.get_text(separator=' ', strip='\n')
     except FileNotFoundError:
         print("File path not found")
-
-def to_search(match_elem):
-    list_match = match_elem.split(" ")
-    list_match[0] = list_match[0].capitalize()
-    return ' '.join(list_match)
-
-def get_section(section:str, filing_text):
-    # Remove these characters and replace them with empty string
-    filing_text = re.sub('\xa0','', filing_text)
-    filing_text = re.sub('\n', '',filing_text)
-    filing_text = re.sub('\t','', filing_text)
-    #print("file test",filing_text[0:1000])
-    if section[-1] != '.':
-        section+='.'
-    #Match all the ITEM elements in document
-    matches = list(re.finditer(re.compile('(Item|ITEM)\s?\d{0,2}[A-Z]?\.'),filing_text))
-    section_list = [m[0] for m in matches]
-    #print(len(section_list), section_list)
-    #print(type(matches))
-    for i in range(len(matches)):
-        print(matches[i][0])
-    assert section in section_list, f"The section should be in the list {section_list}"
-    item_matches = [i for i in range(len(matches)) if matches[i][0] == section]
-    #print("Item matches: ", item_matches)
-
-    section_name = ''
-    if len(item_matches) >= 1:
-        section_name_start = min(item_matches)
-        section_name_end = section_name_start+1
-        start = matches[section_name_start].span()[1]
-        end = matches[section_name_end].span()[0]
-
-        section_name = filing_text[start:end]
-        section_name = re.sub('\d', '', section_name)
-    
-    start = max(item_matches)
-    end = start+1
-    start = matches[start].span()[1]
-    end = matches[end].span()[0]+10000
-    #print(start, end)
-
-    section_text = filing_text[start:end]
-    section_text = re.sub(section_name, '', section_text, count=1)
-    section_text = re.sub(section_name.upper(), '', section_text, count=1)
-    return section_text, section_name.strip()
 
 
 def preprocess_data(section_text):
