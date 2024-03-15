@@ -3,7 +3,7 @@ from sec_query import SEC_QUERY
 import tiktoken
 from openai import OpenAI
 
-OPENEAI_API_KEY = "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"
+OPENEAI_API_KEY = "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"
 client = OpenAI(api_key=OPENEAI_API_KEY)
 
 def read_to_list(categ,ticker) -> list:

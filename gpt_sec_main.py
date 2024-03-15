@@ -2,7 +2,12 @@ from text_handler import summary_, construct_message, split
 from sec_query import SEC_QUERY
 from transformers import BertTokenizer, BertForSequenceClassification
 from transformers import pipeline
+import yfinance as yf
+from datetime import datetime
+from polygon import RESTClient
+import pandas as pd
 
+client = RESTClient(api_key="Xc1zDaoNh92eQpKQZM3TDpAMyNIN87k_")
 finbert = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone',num_labels=3)
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone')
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -59,13 +64,26 @@ def sentiment_analysis(summary):
         summary -- summary of section
     Returns:
         sentiment analysis dictionary i.e [{'label': 'Positive', 'score': 0.9961360096931458}]
-        
+
     """
     nlp = pipeline("sentiment-analysis", model=finbert, tokenizer=tokenizer)
     return nlp(summary)
 
+def get_stock_info(ticker, start_time, end_time):
+    data_request = client.get_aggs(ticker=ticker, multiplier=1, timespan="minute", from_=start_time, to= end_time)
+    return pd.DataFrame(data_request)
+
 
 if __name__ == "__main__":
+    ticker = "TSLA"
+    data_request = client.get_aggs(ticker=ticker, multiplier=1, timespan="minute", from_='2023-10-01', to="2023-10-30")
+    price_data = pd.DataFrame(data_request)
+
+
+    print(price_data)
+    # stock_info = yf.Ticker("TSLA")
+    # hist_prices = stock_info.history(start='2023-10-01', end="2023-10-30", interval="5m")
+    # print(hist_prices)
     query = SEC_QUERY("10-K", "TSLA", "10")
     text = []
     index = 0
@@ -73,5 +91,6 @@ if __name__ == "__main__":
         text.append(query.get_section_text(index, cat))
     
     summaries = main(text)
+    print(summaries)
     for summ in summaries:
         print(sentiment_analysis(summ))
