@@ -3,6 +3,24 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 
+class multi_headed_attention(nn.Module):
+    def __init__(self, d_model, nhead, droput=0.4) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.nhead = nhead
+        self.w_q = nn.Linear(d_model, d_model)
+        self.w_k = nn.Linear(d_model, d_model)
+        self.w_v = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(droput)
+        self.linear = nn.Linear(d_model, d_model)
+    
+    def forward(self, q, k, v, mask=None):
+        q_head = self.w_q(q).view(q.size(0), -1, self.nhead, self.d_model//self.nhead).permute(0,2,1,3)
+        k_head = self.w_k(k).view(k.size(0), -1, self.nhead, self.d_model // self.nhead).permute(0, 2, 1, 3)
+
+
+
+
 class text_model(nn.Module):
     def __init__(self, input_dim, num_class) -> None:
         super().__init__()

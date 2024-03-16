@@ -6,11 +6,49 @@ import yfinance as yf
 from datetime import datetime
 from polygon import RESTClient
 import pandas as pd
+import tiktoken
 
 client = RESTClient(api_key="Xc1zDaoNh92eQpKQZM3TDpAMyNIN87k_")
 finbert = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone',num_labels=3)
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone')
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
+categories_10q = ["part1item1", "part1item2", "part1item3", "part1item4", "part2item1", "part2item1a", "part2item2", "part2item3", "part2item4", "part2item5", "part2item6"]
+
+def split_at_index(text:list, index:int):
+    message_dictionary = {}
+    encoding = tiktoken.get_encoding("cl100k_base")
+    if len(encoding.encode(text[index])) > 16385:
+        first_half, second_half = split(text[index],"Summarize the following text for me")
+        return first_half, second_half
+    else:
+        return text[index], "n/a"
+
+
+def main_10q(text:list, categories:list):
+    summaries = []
+    for i in range(len(categories)):
+        first_half, second_half = split_at_index(text, i)
+        if second_half == 'n/a':
+            summaries.append(summary_(construct_message(text[i])))
+        else:
+            print("\n","******************TEXT WAS SPLIT******************", "\n")
+            mess_init = [{"role": "user", "content": "Summarize the following text for me"}]
+            mess_init.append({"role":"user", "content": first_half[0]})
+
+            mess2 = [{"role": "user", "content": "Summarize the following text for me"}]
+            mess2.append({"role":"user", "content": second_half[0]})
+
+            sum1 = summary_(mess_init)
+            sum2 = summary_(mess2)
+
+            message_final = [{"role": "user", "content": "Summarize and combine these two summaries (They are from different halves of the same text), I will say ALL PARTS SENT when i want you to summarize"}]
+            message_final.append({"role": "user", "content": sum1})
+            message_final.append({"role": "user", "content": sum2})
+            message_final.append({"role": "user", "content": "ALL PARTS SENT"})
+
+            final_sum = summary_(message_final)
+            summaries.append(final_sum)
+    return summaries
 
 
 def main(text:list):
@@ -22,9 +60,12 @@ def main(text:list):
         summaries -- list of summaries of categories [summary 1, summary 1A, ...., summary 15]
     """
     #text = read_to_list(categories_10k)
+    encoding = tiktoken.get_encoding("cl100k_base")
     summaries = []
     for i in range(0, 9):
         #summarize all 10-k categories from 1-7A excluding 8 since the text is too large
+        print(text[i])
+        print("Size of token: ", len(encoding.encode(text[i])))
         summaries.append(summary_(construct_message(text[i])))
     
     #split category 8(FINANCIAL STATEMENTS AND SUPPLEMENTARY DATA )
@@ -75,22 +116,22 @@ def get_stock_info(ticker, start_time, end_time):
 
 
 if __name__ == "__main__":
-    ticker = "TSLA"
-    data_request = client.get_aggs(ticker=ticker, multiplier=1, timespan="minute", from_='2023-10-01', to="2023-10-30")
-    price_data = pd.DataFrame(data_request)
+    # ticker = "TSLA"
+    # data_request = client.get_aggs(ticker=ticker, multiplier=1, timespan="minute", from_='2023-10-01', to="2023-10-30")
+    # price_data = pd.DataFrame(data_request)
 
 
-    print(price_data)
-    # stock_info = yf.Ticker("TSLA")
-    # hist_prices = stock_info.history(start='2023-10-01', end="2023-10-30", interval="5m")
-    # print(hist_prices)
-    query = SEC_QUERY("10-K", "TSLA", "10")
+    # print(price_data)
+    # # stock_info = yf.Ticker("TSLA")
+    # # hist_prices = stock_info.history(start='2023-10-01', end="2023-10-30", interval="5m")
+    # # print(hist_prices)
+    query = SEC_QUERY("10-Q", "TSLA", "10")
     text = []
     index = 0
-    for cat in categories_10k:
+    for cat in categories_10q:
         text.append(query.get_section_text(index, cat))
     
-    summaries = main(text)
+    summaries = main_10q(text, categories_10q)
     print(summaries)
-    for summ in summaries:
-        print(sentiment_analysis(summ))
+    # for summ in summaries:
+    #     print(sentiment_analysis(summ))

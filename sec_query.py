@@ -41,6 +41,10 @@ class SEC_QUERY:
         response = queryAPI.get_filings(self.query)
         return json.dumps(response["filings"][index], indent=2)
     
+    def get_response_raw(self, index):
+        response = queryAPI.get_filings(self.query)
+        return response["filings"][index]
+    
     def get_filing(self):
         """Gets the full query for sec_api"""
         return queryAPI.get_filings(self.query)
@@ -77,3 +81,6 @@ class SEC_QUERY:
         """
         final_json, filing_url, q_dict = self.extract(index)
         return extractorApi.get_section(filing_url, section, "text")
+    
+    def __str__(self):
+        return str(self.get_filing())
