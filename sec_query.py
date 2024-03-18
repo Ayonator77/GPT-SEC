@@ -84,3 +84,6 @@ class SEC_QUERY:
     
     def __str__(self):
         return str(self.get_filing())
+    
+    def get_size(self):
+        return int(self.size)

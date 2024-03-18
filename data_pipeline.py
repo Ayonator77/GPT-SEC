@@ -4,19 +4,22 @@ import sec_query
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from transformers import BertTokenizer
+import torch
+
+
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
-catagories_10q = ["part1item1", "part1item2", "part1item3", "part1item4", "part2item1", "part2item1a", "part2item2", "part2item3", "part2item4", "part2item5", "part2item6"]
+categories_10q = ["part1item1", "part1item2", "part1item3", "part1item4", "part2item1", "part2item1a", "part2item2", "part2item3", "part2item4", "part2item5", "part2item6"]
 
-def create_text_dataset(form_type:str, ticker:str, size:str, categories:list, index):
-    query = SEC_QUERY(form_type, ticker, size)
+def create_text_dataset(query:SEC_QUERY, categories:list, index:int):
+    #query = SEC_QUERY(form_type, ticker, size)
     text = []
     analysis_list = []
     for cat in categories:
         text.append(query.get_section_text(index, cat))
     
     summaries = main_10q(text, categories)
-    print(summaries)
     for summ in summaries:
         analysis_list.append(sentiment_analysis(summ))
 
@@ -25,6 +28,12 @@ def create_text_dataset(form_type:str, ticker:str, size:str, categories:list, in
     for i in range(len(summaries)):
         sent_sum_tup.append((summaries[i], analysis_list[i]))
     return sent_sum_tup
+
+def text_no_label(query:SEC_QUERY, categories:list, index:int):
+    text = []
+    for cat in categories:
+        text.append(query.get_section_text(index, cat))
+    return main_10q(text, categories)
 
 def create_stock_dataset(form_type:str, ticker:str, size:str, index:int) -> pd.core.frame.DataFrame:
     query = SEC_QUERY(form_type, ticker, size)
@@ -41,19 +50,40 @@ def create_stock_dataset(form_type:str, ticker:str, size:str, index:int) -> pd.c
     #Get stock information from start time -> end time
     data_frame = get_stock_info(ticker, start_time, end_time)
     data_frame['timestamp']=data_frame['timestamp'].apply(lambda x: datetime.fromtimestamp(x/1000))
-    volatility = get_volatility(data_frame)
+    volatility = get_volatility(data_frame) 
     return data_frame, volatility
 
 
+def append_text_data(query:SEC_QUERY, categories:list):
+    full_text_dataset = []
+    for i in range(query.get_size()):
+        full_text_dataset.append(text_no_label(query, categories, i))
+    
+    return full_text_dataset
+
+def preprocess_data(full_text:list):
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    encoded_texts = []
+    for text_list in full_text:
+        enc_text_list = []
+        for text in text_list:
+            enc_text = tokenizer.encode(text, max_length=512, truncation=True, padding="max_length", return_tensors='pt')
+            enc_text_list.append(enc_text)
+        encoded_texts.append(enc_text_list)
+
+    input_ids = torch.cat(encoded_texts, dim=0)
+    attention_masks = (input_ids != tokenizer.pad_token_id).float()
+
+    input_ids = input_ids.squeeze(1)
+    return  input_ids, attention_masks
+
 def load_summaries(file_paths: list):
     summaries = []
-    for file_path in file_paths:
+    for file_path in file_paths:  
         with open(file_path, 'r') as file:
             summaries.append(file.read())
     return summaries
 
-def appy_sentiment(summaries):
-    pass
 
 def get_volatility(data_frame):
     data_frame['daily_returns'] = data_frame['close'].pct_change()
@@ -61,10 +91,20 @@ def get_volatility(data_frame):
     return volatility
 
 if __name__ == "__main__":
-    data_set= create_stock_dataset("10-Q", "TSLA", "10", 0)
-    sentiment_summary = create_text_dataset("10-Q", "TSLA", "10", catagories_10q, 0)
+    data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
+    query_tsla = SEC_QUERY("10-Q", "TSLA", "10")
+    query_aapl = SEC_QUERY("10-Q", "AAPL", "10")
+    query_msft = SEC_QUERY("10-Q", "MSFT", "10")
+    query_meta = SEC_QUERY("10-Q", "META", "10")
+    query_googl = SEC_QUERY("10-Q", "GOOGL", "10")
+    query_amzn = SEC_QUERY("10-Q", "AMZN", "10")
+    query_nvda = SEC_QUERY("10-Q", "NVDA", "10")
+    query_amd = SEC_QUERY("10-Q", "AMD", "10")
+
+    sentiment_summary = append_text_data(query_tsla, categories_10q)
     print(data_set)
     print(sentiment_summary)
+    print([preprocess_data(sentiment_summary)])
     # query = SEC_QUERY("10-Q", "TSLA", "10")
     #qstring = query.get_section_text(0, "part1item1")
     # time_string = query.get_response_raw(0)['filedAt']
