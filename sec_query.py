@@ -87,3 +87,6 @@ class SEC_QUERY:
     
     def get_size(self):
         return int(self.size)
+    
+    def get_ticker(self):
+        return self.ticker

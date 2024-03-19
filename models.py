@@ -65,3 +65,6 @@ class HybridModel(nn.Module):
         combined_output = torch.cat((text_output, time_series_output), dim=1)
         output = self.output_layer(combined_output)
         return output
+    
+if __name__ =="__main__":
+    print("ran")

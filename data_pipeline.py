@@ -6,7 +6,11 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from transformers import BertTokenizer
 import torch
-
+from models import LSTMModel, text_model, HybridModel
+import os
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
 
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -85,6 +89,27 @@ def load_summaries(file_paths: list):
     return summaries
 
 
+def text_clustering(text_data, num_clusters=3):
+    vectorizer = TfidfVectorizer(max_df=0.5, min_df=2, stop_words="english")
+    X = vectorizer.fit_transform(text_data)
+    X = torch.tensor(X.toarray(), dtype=torch.float32)
+
+    kmeans = KMeans(n_clusters=num_clusters)
+    kmeans.fit(X)
+    return torch.tensor(kmeans.labels_, dtype=torch.int32)
+
+def write_to_file(query:SEC_QUERY, categories):
+    full_summary = append_text_data(query,categories)
+    main_path = "Dataset/"+query.get_ticker()
+    os.mkdir(main_path)
+    for i in range(len(full_summary)):
+        filing_date = query.get_response_raw(i)['filedAt']
+        date_string = datetime.fromisoformat(filing_date)
+        date_string = date_string.strftime("%Y-%m-%d")
+        for text in full_summary[i]:
+            with open(main_path+'/'+date_string, "w") as file:
+                file.write("%s\n"%text)
+
 def get_volatility(data_frame):
     data_frame['daily_returns'] = data_frame['close'].pct_change()
     volatility = data_frame['daily_returns'].std()
@@ -92,19 +117,14 @@ def get_volatility(data_frame):
 
 if __name__ == "__main__":
     data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
-    query_tsla = SEC_QUERY("10-Q", "TSLA", "10")
-    query_aapl = SEC_QUERY("10-Q", "AAPL", "10")
-    query_msft = SEC_QUERY("10-Q", "MSFT", "10")
-    query_meta = SEC_QUERY("10-Q", "META", "10")
-    query_googl = SEC_QUERY("10-Q", "GOOGL", "10")
-    query_amzn = SEC_QUERY("10-Q", "AMZN", "10")
-    query_nvda = SEC_QUERY("10-Q", "NVDA", "10")
-    query_amd = SEC_QUERY("10-Q", "AMD", "10")
+    ticker_list = ["TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD"]
+    query_list = [SEC_QUERY("10-Q", ticker, "2") for ticker in ticker_list]
+    sentiment_summary = append_text_data(query_list[0], categories_10q)
 
-    sentiment_summary = append_text_data(query_tsla, categories_10q)
-    print(data_set)
-    print(sentiment_summary)
-    print([preprocess_data(sentiment_summary)])
+    text_labels = text_clustering(sentiment_summary[0])
+    # print(data_set)
+    print(sentiment_summary, text_labels)
+    # print([preprocess_data(sentiment_summary)])
     # query = SEC_QUERY("10-Q", "TSLA", "10")
     #qstring = query.get_section_text(0, "part1item1")
     # time_string = query.get_response_raw(0)['filedAt']
