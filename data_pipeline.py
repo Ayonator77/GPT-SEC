@@ -6,11 +6,12 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from transformers import BertTokenizer
 import torch
-from models import LSTMModel, text_model, HybridModel
+from models import TransformerModel
 import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
 
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -98,6 +99,23 @@ def text_clustering(text_data, num_clusters=3):
     kmeans.fit(X)
     return torch.tensor(kmeans.labels_, dtype=torch.int32)
 
+
+def preprocess(data:list, max_length):
+    texts, labels = [], []
+    for item in data:
+        item
+        texts.append(item[0])
+        labels.append(item[1])
+    
+    label_encoder = LabelEncoder()
+    encoded_labels = label_encoder.fit(labels)
+
+
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenized_texts = tokenizer(texts, truncation=True, padding='max_length', max_length=max_length, return_tensors='pt')
+    return tokenized_texts, encoded_labels, label_encoder.classes_
+
+
 def write_to_file(query:SEC_QUERY, categories):
     full_summary = append_text_data(query,categories)
     main_path = "Dataset/"+query.get_ticker()
@@ -123,7 +141,27 @@ if __name__ == "__main__":
 
     text_labels = text_clustering(sentiment_summary[0])
     # print(data_set)
-    print(sentiment_summary, text_labels)
+    test_list = [sentiment_summary[0], text_labels] 
+    #print(sentiment_summary, text_labels)
+    #print(test_list)
+    #print(test_list[0])
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    token_text, labels, classes = preprocess(test_list[0], 100)
+
+    vocab_size = tokenizer.vocab_size
+    embed_size = 128
+
+    num_heads = 4
+    hidden_size = 256
+    num_layers = 3
+    num_classes = len(classes)
+    dropout = 0.1
+    model = TransformerModel(vocab_size, embeded_size=embed_size, num_heads=num_heads, num_layers=num_layers, num_classes=num_classes, max_length=100, dropout=dropout)
+    print(token_text, labels, classes)
+    print(model)
+    # for item in test_list:
+    #     print(item)
+    #print(test_list[0][0])
     # print([preprocess_data(sentiment_summary)])
     # query = SEC_QUERY("10-Q", "TSLA", "10")
     #qstring = query.get_section_text(0, "part1item1")

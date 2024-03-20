@@ -19,8 +19,6 @@ class multi_headed_attention(nn.Module):
         k_head = self.w_k(k).view(k.size(0), -1, self.nhead, self.d_model // self.nhead).permute(0, 2, 1, 3)
 
 
-
-
 class text_model(nn.Module):
     def __init__(self, input_dim, num_class) -> None:
         super().__init__()
@@ -35,6 +33,40 @@ class text_model(nn.Module):
         output = self.output_layer(text_data[:, 0, :])
         return output
     
+
+class TransformerModel(nn.Module):
+    def __init__(self, vocab_size, embeded_size, num_heads, hidden_size, num_layers, num_classes, max_length, dropout=0.1):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embeded_size)
+        self.positional_encoding = PositionalEncoding(embeded_size, max_length, dropout)
+        encoder_layers = nn.TransformerEncoderLayer(d_model=embeded_size, nhead=num_heads,dim_feedforward=hidden_size, dropout=dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
+        self.fc = nn.Linear(embeded_size, num_classes)
+    
+    def forward(self, x):
+        embedded = self.embedding(x)
+        position_encoding = self.positional_encoding(embedded)
+        transformer_output = self.transformer_encoder(position_encoding)
+        mean_pooled = torch.mean(transformer_output, dim=1)
+        logits = self.fc(mean_pooled)
+        return logits
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len, dropout=0.1):
+        super().__init__()
+        self.dropout = dropout
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe[:0, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.pe = nn.Parameter(pe, requires_grad=False)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return x
 
 class LSTMModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
