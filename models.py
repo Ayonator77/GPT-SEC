@@ -59,7 +59,7 @@ class PositionalEncoding(nn.Module):
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
-        pe[:0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.pe = nn.Parameter(pe, requires_grad=False)
@@ -74,12 +74,12 @@ class LSTMModel(nn.Module):
         self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, time_series_data):
+    def forward(self, x):
         # Initialize hidden state and cell state
-        h0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
-        c0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
+        # h0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
+        # c0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
         # Forward pass through LSTM
-        lstm_out, _ = self.lstm(time_series_data, (h0, c0))
+        lstm_out, _ = self.lstm(x)
         # Apply the output layer
         output = self.fc(lstm_out[:, -1, :])  # Taking the output of the last time step
         return output
@@ -97,6 +97,31 @@ class HybridModel(nn.Module):
         combined_output = torch.cat((text_output, time_series_output), dim=1)
         output = self.output_layer(combined_output)
         return output
-    
+
+
+def train_model(model, train_loader, criterion, optimizer, num_epochs):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.train()
+    for epoch in range(num_epochs):
+        running_loss = 0.0
+        for batch in train_loader:
+            inputs = batch['input_ids'].to(device)
+            token_type_ids = batch['token_type_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+
+            optimizer.zero_grad()
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backwards()
+            optimizer.step()
+
+            running_loss += loss.item() * inputs.size(0)
+        epoch_loss  = running_loss/len(train_loader.dataset)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
+
+
 if __name__ =="__main__":
     print("ran")

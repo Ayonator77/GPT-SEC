@@ -6,12 +6,15 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from transformers import BertTokenizer
 import torch
-from models import TransformerModel
+from models import TransformerModel, train_model, LSTMModel
 import os
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
+import torch.nn as nn
+from sklearn.preprocessing import MinMaxScaler
+from torch.utils.data import DataLoader, TensorDataset
 
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -40,8 +43,7 @@ def text_no_label(query:SEC_QUERY, categories:list, index:int):
         text.append(query.get_section_text(index, cat))
     return main_10q(text, categories)
 
-def create_stock_dataset(form_type:str, ticker:str, size:str, index:int) -> pd.core.frame.DataFrame:
-    query = SEC_QUERY(form_type, ticker, size)
+def create_stock_dataset(query:SEC_QUERY, index:int) -> pd.core.frame.DataFrame:
     time_string = query.get_response_raw(index)['filedAt']
     start_time = datetime.fromisoformat(time_string)
     end_time = start_time + relativedelta(days=7)
@@ -53,7 +55,7 @@ def create_stock_dataset(form_type:str, ticker:str, size:str, index:int) -> pd.c
     end_time = end_time.strftime("%Y-%m-%d")
 
     #Get stock information from start time -> end time
-    data_frame = get_stock_info(ticker, start_time, end_time)
+    data_frame = get_stock_info(query.get_ticker(), start_time, end_time)
     data_frame['timestamp']=data_frame['timestamp'].apply(lambda x: datetime.fromtimestamp(x/1000))
     volatility = get_volatility(data_frame) 
     return data_frame, volatility
@@ -133,33 +135,54 @@ def get_volatility(data_frame):
     volatility = data_frame['daily_returns'].std()
     return volatility
 
+def test_lstm():
+    pass
+
 if __name__ == "__main__":
-    data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
+    #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
     ticker_list = ["TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD"]
     query_list = [SEC_QUERY("10-Q", ticker, "2") for ticker in ticker_list]
-    sentiment_summary = append_text_data(query_list[0], categories_10q)
+   # sentiment_summary = append_text_data(query_list[0], categories_10q)
+    
 
-    text_labels = text_clustering(sentiment_summary[0])
-    # print(data_set)
-    test_list = [sentiment_summary[0], text_labels] 
+    input_size = 7  # Number of features in each input sequence
+    hidden_size = 64  # Number of hidden units in the LSTM layer
+    num_layers = 2  # Number of LSTM layers
+    output_size = 1  # Dimensionality of the output (single value for predicting next day's return)
+
+
+    stock_data = create_stock_dataset(query_list[0], 0)[0]
+    scaler = MinMaxScaler()
+    normalized_data = scaler.fit_transform(stock_data[['open', 'high', 'low', 'close', 'volume', 'vwap', 'transactions']])
+    print(stock_data)
+    print(normalized_data)
+
+    test_data = torch.tensor(normalized_data[-1], dtype=torch.float32)
+
+
+    model = LSTMModel(input_size, hidden_size, output_size)
+    print(model)
+
+    # text_labels = text_clustering(sentiment_summary[0])
+    # test_list = [sentiment_summary[0], text_labels] 
     #print(sentiment_summary, text_labels)
     #print(test_list)
     #print(test_list[0])
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    token_text, labels, classes = preprocess(test_list[0], 100)
+    # tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    # token_text, labels, classes = preprocess(test_list[0], 100)
 
-    vocab_size = tokenizer.vocab_size
-    embed_size = 128
+    # vocab_size = tokenizer.vocab_size
+    # embed_size = 128
 
-    num_heads = 4
-    hidden_size = 256
-    num_layers = 3
-    num_classes = len(classes)
-    dropout = 0.1
-    model = TransformerModel(vocab_size, embeded_size=embed_size, num_heads=num_heads, num_layers=num_layers, num_classes=num_classes, max_length=100, dropout=dropout)
-    print(token_text, labels, classes)
-    print(model)
-    # for item in test_list:
+    # num_heads = 4
+    # hidden_size = 256
+    # num_layers = 3
+    # num_classes = len(classes)
+    # dropout = 0.1
+    # print(token_text, labels, classes)
+    # model = TransformerModel(vocab_size, embeded_size=embed_size, num_heads=num_heads, num_layers=num_layers, num_classes=num_classes, max_length=100, dropout=dropout, hidden_size=hidden_size)
+    # print(model(token_text['input_ids']))
+    # # for item in test_list:
     #     print(item)
     #print(test_list[0][0])
     # print([preprocess_data(sentiment_summary)])
