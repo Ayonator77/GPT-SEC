@@ -15,6 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
+import torch.optim as optim
 
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -138,6 +139,29 @@ def get_volatility(data_frame):
 def test_lstm():
     pass
 
+
+def train_lstm(model, input_size, hidden_size, num_layers, output_size, data_set):
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+    dataloader = DataLoader(data_set, batch_size=32, shuffle=True)
+
+    num_epochs = 10
+    for epoch in range(num_epochs):
+        for batch in dataloader:
+            inputs = batch['inputs']
+            labels = batch['labels']
+
+            outputs = model(inputs)
+
+            loss = criterion(outputs, labels)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+    return model
+
+
 if __name__ == "__main__":
     #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
     ticker_list = ["TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD"]
@@ -161,6 +185,10 @@ if __name__ == "__main__":
 
 
     model = LSTMModel(input_size, hidden_size, output_size)
+    model.eval()
+    with torch.no_grad():
+        test_data = test_data.unsqueeze(0).unsqueeze(0)
+        print("Test Inference: \n",model(test_data))
     print(model)
 
     # text_labels = text_clustering(sentiment_summary[0])
