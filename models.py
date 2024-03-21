@@ -19,8 +19,6 @@ class multi_headed_attention(nn.Module):
         k_head = self.w_k(k).view(k.size(0), -1, self.nhead, self.d_model // self.nhead).permute(0, 2, 1, 3)
 
 
-
-
 class text_model(nn.Module):
     def __init__(self, input_dim, num_class) -> None:
         super().__init__()
@@ -36,18 +34,52 @@ class text_model(nn.Module):
         return output
     
 
+class TransformerModel(nn.Module):
+    def __init__(self, vocab_size, embeded_size, num_heads, hidden_size, num_layers, num_classes, max_length, dropout=0.1):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embeded_size)
+        self.positional_encoding = PositionalEncoding(embeded_size, max_length, dropout)
+        encoder_layers = nn.TransformerEncoderLayer(d_model=embeded_size, nhead=num_heads,dim_feedforward=hidden_size, dropout=dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
+        self.fc = nn.Linear(embeded_size, num_classes)
+    
+    def forward(self, x):
+        embedded = self.embedding(x)
+        position_encoding = self.positional_encoding(embedded)
+        transformer_output = self.transformer_encoder(position_encoding)
+        mean_pooled = torch.mean(transformer_output, dim=1)
+        logits = self.fc(mean_pooled)
+        return logits
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len, dropout=0.1):
+        super().__init__()
+        self.dropout = dropout
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.pe = nn.Parameter(pe, requires_grad=False)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return x
+
 class LSTMModel(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(LSTMModel, self).__init__()
         self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, time_series_data):
+    def forward(self, x):
         # Initialize hidden state and cell state
-        h0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
-        c0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
+        # h0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
+        # c0 = torch.zeros(1, time_series_data.size(0), self.hidden_dim)
         # Forward pass through LSTM
-        lstm_out, _ = self.lstm(time_series_data, (h0, c0))
+        lstm_out, _ = self.lstm(x)
         # Apply the output layer
         output = self.fc(lstm_out[:, -1, :])  # Taking the output of the last time step
         return output
@@ -65,6 +97,31 @@ class HybridModel(nn.Module):
         combined_output = torch.cat((text_output, time_series_output), dim=1)
         output = self.output_layer(combined_output)
         return output
-    
+
+
+def train_model(model, train_loader, criterion, optimizer, num_epochs):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.train()
+    for epoch in range(num_epochs):
+        running_loss = 0.0
+        for batch in train_loader:
+            inputs = batch['input_ids'].to(device)
+            token_type_ids = batch['token_type_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+
+            optimizer.zero_grad()
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backwards()
+            optimizer.step()
+
+            running_loss += loss.item() * inputs.size(0)
+        epoch_loss  = running_loss/len(train_loader.dataset)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
+
+
 if __name__ =="__main__":
     print("ran")
