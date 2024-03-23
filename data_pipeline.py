@@ -121,15 +121,20 @@ def preprocess(data:list, max_length):
 
 def write_to_file(query:SEC_QUERY, categories):
     full_summary = append_text_data(query,categories)
-    main_path = "Dataset/"+query.get_ticker()
-    os.mkdir(main_path)
+    main_path = "Dataset"
+   # os.mkdir(main_path)
+    ticker_path = os.path.join(main_path, query.get_ticker())
+    if not os.path.exists(main_path):
+        os.makedirs(main_path)
+    os.makedirs(ticker_path, exist_ok=True)
     for i in range(len(full_summary)):
         filing_date = query.get_response_raw(i)['filedAt']
         date_string = datetime.fromisoformat(filing_date)
         date_string = date_string.strftime("%Y-%m-%d")
-        for text in full_summary[i]:
-            with open(main_path+'/'+date_string, "w") as file:
-                file.write("%s\n"%text)
+        for i in range(len(full_summary)):
+            with open(main_path+'/'+query.get_ticker()+'/'+date_string+'.txt', "w") as file:
+                for line in full_summary[i]:
+                    file.write(f"{line}\n")
 
 def get_volatility(data_frame):
     data_frame['daily_returns'] = data_frame['close'].pct_change()
@@ -162,12 +167,40 @@ def train_lstm(model, input_size, hidden_size, num_layers, output_size, data_set
     return model
 
 
+def train_model(model, train_loader, criterion, optimizer, num_epochs):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    model.train()
+    for epoch in range(num_epochs):
+        running_loss = 0.0
+        for batch in train_loader:
+            inputs = batch['input_ids'].to(device)
+            token_type_ids = batch['token_type_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].to(device)
+
+            optimizer.zero_grad()
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backwards()
+            optimizer.step()
+
+            running_loss += loss.item() * inputs.size(0)
+        epoch_loss  = running_loss/len(train_loader.dataset)
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
+
+
+
 if __name__ == "__main__":
     #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
-    ticker_list = ["TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD"]
-    query_list = [SEC_QUERY("10-Q", ticker, "2") for ticker in ticker_list]
+    ticker_list = ["TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
+    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list]
    # sentiment_summary = append_text_data(query_list[0], categories_10q)
-    
+    for query in query_list:
+        if query.get_ticker() != "TSLA" or  query.get_ticker() != "APPL":
+            write_to_file(query, categories_10q)
+            print(query.get_ticker()+" added")
 
     input_size = 7  # Number of features in each input sequence
     hidden_size = 64  # Number of hidden units in the LSTM layer
@@ -201,7 +234,7 @@ if __name__ == "__main__":
 
     # vocab_size = tokenizer.vocab_size
     # embed_size = 128
-
+    
     # num_heads = 4
     # hidden_size = 256
     # num_layers = 3
