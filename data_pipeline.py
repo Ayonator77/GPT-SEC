@@ -65,6 +65,7 @@ def create_stock_dataset(query:SEC_QUERY, index:int) -> pd.core.frame.DataFrame:
 def append_text_data(query:SEC_QUERY, categories:list):
     full_text_dataset = []
     for i in range(query.get_size()):
+        print(i, query)
         full_text_dataset.append(text_no_label(query, categories, i))
     
     return full_text_dataset
@@ -121,6 +122,7 @@ def preprocess(data:list, max_length):
 
 def write_to_file(query:SEC_QUERY, categories):
     full_summary = append_text_data(query,categories)
+    print(full_summary)
     main_path = "Dataset"
    # os.mkdir(main_path)
     ticker_path = os.path.join(main_path, query.get_ticker())
@@ -167,7 +169,7 @@ def train_lstm(model, input_size, hidden_size, num_layers, output_size, data_set
     return model
 
 
-def train_model(model, train_loader, criterion, optimizer, num_epochs):
+def train_transformer(model, train_loader, criterion, optimizer, num_epochs):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     model.train()
@@ -194,7 +196,8 @@ def train_model(model, train_loader, criterion, optimizer, num_epochs):
 
 if __name__ == "__main__":
     #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
-    ticker_list = ["TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
+    # "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"
+    ticker_list = [ "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
     query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list]
    # sentiment_summary = append_text_data(query_list[0], categories_10q)
     for query in query_list:
