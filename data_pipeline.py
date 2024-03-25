@@ -121,22 +121,33 @@ def preprocess(data:list, max_length):
 
 
 def write_to_file(query:SEC_QUERY, categories):
-    full_summary = append_text_data(query,categories)
-    print(full_summary)
+    size = query.get_size()
+    text_list = []
+    full_summary = []
+    for i in range(size):
+        for cat in categories:
+            text_list.append(query.get_section_text(i, cat))
+        full_summary.append(main_10q(text_list, categories))
+        text_list.clear()
+    
+
     main_path = "Dataset"
-   # os.mkdir(main_path)
     ticker_path = os.path.join(main_path, query.get_ticker())
     if not os.path.exists(main_path):
         os.makedirs(main_path)
+    
     os.makedirs(ticker_path, exist_ok=True)
-    for i in range(len(full_summary)):
+
+    for i in range(size):
         filing_date = query.get_response_raw(i)['filedAt']
         date_string = datetime.fromisoformat(filing_date)
         date_string = date_string.strftime("%Y-%m-%d")
-        for i in range(len(full_summary)):
-            with open(main_path+'/'+query.get_ticker()+'/'+date_string+'.txt', "w") as file:
-                for line in full_summary[i]:
-                    file.write(f"{line}\n")
+        with open(main_path+'/'+query.get_ticker()+'/'+date_string+'.txt', "w") as file:
+            for line in full_summary[i]:
+                file.write(line+'\n')
+    
+
+
 
 def get_volatility(data_frame):
     data_frame['daily_returns'] = data_frame['close'].pct_change()
@@ -193,11 +204,21 @@ def train_transformer(model, train_loader, criterion, optimizer, num_epochs):
         print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}')
 
 
+class data_pipeline():
+    def __init__(self, file_text, file_frame) -> None:
+        self.file_text = file_text
+        self.file_frame = file_frame
+
+    def extract_text(self):
+        text_file = open(self.file_text, "r")
+        summ_list = text_file.readlines()
+        return summ_list
+
 
 if __name__ == "__main__":
     #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
     # "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"
-    ticker_list = [ "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
+    ticker_list = [ "T", "REGN"]
     query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list]
    # sentiment_summary = append_text_data(query_list[0], categories_10q)
     for query in query_list:
