@@ -62,6 +62,13 @@ def create_stock_dataset(query:SEC_QUERY, index:int) -> pd.core.frame.DataFrame:
     return data_frame, volatility
 
 
+def save_stock_data(query:SEC_QUERY, index:int) :
+    t_list = os.listdir("Text Dataset")
+    dates = []
+    for tick in t_list:
+        dates.append(os.listdir(os.path.join("Text Dataset", tick)))
+
+
 def append_text_data(query:SEC_QUERY, categories:list):
     full_text_dataset = []
     for i in range(query.get_size()):
@@ -157,7 +164,8 @@ class data_pipeline():
         self.file_text = file_text
         self.file_frame = file_frame
 
-    def extract_text(self):
+    def extract_text(self, main_path="Text Dataset"):
+        path_list = os.listdir(main_path)
         text_file = open(self.file_text, "r")
         summ_list = text_file.readlines()
         return summ_list
@@ -166,13 +174,13 @@ class data_pipeline():
 if __name__ == "__main__":
     #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
     # "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"
-    ticker_list = [ "T", "REGN"]
+    ticker_list = [ "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
     query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list]
    # sentiment_summary = append_text_data(query_list[0], categories_10q)
-    for query in query_list:
-        if query.get_ticker() != "TSLA" or  query.get_ticker() != "APPL":
-            write_to_file(query, categories_10q)
-            print(query.get_ticker()+" added")
+    # for query in query_list:
+    #     if query.get_ticker() != "TSLA" or  query.get_ticker() != "APPL":
+    #         write_to_file(query, categories_10q)
+    #         print(query.get_ticker()+" added")
 
     input_size = 7  # Number of features in each input sequence
     hidden_size = 64  # Number of hidden units in the LSTM layer
@@ -180,21 +188,22 @@ if __name__ == "__main__":
     output_size = 1  # Dimensionality of the output (single value for predicting next day's return)
 
 
-    stock_data = create_stock_dataset(query_list[0], 0)[0]
-    scaler = MinMaxScaler()
-    normalized_data = scaler.fit_transform(stock_data[['open', 'high', 'low', 'close', 'volume', 'vwap', 'transactions']])
+    stock_data = create_stock_dataset(query_list[0], 9)[0]
     print(stock_data)
-    print(normalized_data)
+    # scaler = MinMaxScaler()
+    # normalized_data = scaler.fit_transform(stock_data[['open', 'high', 'low', 'close', 'volume', 'vwap', 'transactions']])
+    # print(stock_data)
+    # print(normalized_data)
 
-    test_data = torch.tensor(normalized_data[-1], dtype=torch.float32)
+    # test_data = torch.tensor(normalized_data[-1], dtype=torch.float32)
 
 
-    model = LSTMModel(input_size, hidden_size, output_size)
-    model.eval()
-    with torch.no_grad():
-        test_data = test_data.unsqueeze(0).unsqueeze(0)
-        print("Test Inference: \n",model(test_data))
-    print(model)
+    # model = LSTMModel(input_size, hidden_size, output_size)
+    # model.eval()
+    # with torch.no_grad():
+    #     test_data = test_data.unsqueeze(0).unsqueeze(0)
+    #     print("Test Inference: \n",model(test_data))
+    #print(model)
 
     # text_labels = text_clustering(sentiment_summary[0])
     # test_list = [sentiment_summary[0], text_labels] 
