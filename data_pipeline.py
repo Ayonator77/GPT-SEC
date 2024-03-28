@@ -16,6 +16,7 @@ import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
+import json
 
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -128,17 +129,20 @@ def preprocess(data:list, max_length):
 
 
 def write_to_file(query:SEC_QUERY, categories):
+    print("Started ", query.get_ticker())
     size = query.get_size()
     text_list = []
     full_summary = []
     for i in range(size):
+        print("Started summaries")
         for cat in categories:
             text_list.append(query.get_section_text(i, cat))
+        print("Appending summaries")
         full_summary.append(main_10q(text_list, categories))
         text_list.clear()
     
 
-    main_path = "Dataset"
+    main_path = "Text Dataset"
     ticker_path = os.path.join(main_path, query.get_ticker())
     if not os.path.exists(main_path):
         os.makedirs(main_path)
@@ -159,6 +163,40 @@ def get_volatility(data_frame):
     volatility = data_frame['daily_returns'].std()
     return volatility
 
+def save_stock_data():
+    t_list = os.listdir("Text Dataset")
+    #dates = []
+    dataframe_list = []
+    stock_dict = {}
+    for tick in t_list:
+        stock_dict[tick] = os.listdir(os.path.join("Text Dataset", tick))
+        #dates.append(os.listdir(os.path.join("Text Dataset", tick)))
+    stock_dict  = {key: [datetime.strptime(filename[:-4], '%Y-%m-%d') for filename in filenames] for key, filenames in stock_dict.items()}
+    for key, dates in stock_dict.items():
+        for date in dates:
+            #print(date)
+            end_date = date +relativedelta(days=7)
+            date = date.strftime("%Y-%m-%d")
+            end_date = end_date.strftime("%Y-%m-%d")
+            #print(date, end_date)
+            dataframe_list.append((key, get_stock_info(key, date, end_date)))
+
+    if not os.path.exists("Stock Dataset"):
+        os.makedirs("Stock Dataset")
+    for key, data_frame in dataframe_list:
+        file_index = 0
+        if 'timestamp' in data_frame.columns:
+            data_frame['timestamp']=data_frame['timestamp'].apply(lambda x: datetime.fromtimestamp(x/1000))
+            print(data_frame)
+            key_path = os.path.join("Stock Dataset", key)
+            os.makedirs(key_path, exist_ok=True)
+            final_path = os.path.join(key_path, key+'_'+str(file_index)+'.csv')
+            data_frame.to_csv(final_path, index=False)
+            file_index += 1
+
+
+
+
 class data_pipeline():
     def __init__(self, file_text, file_frame) -> None:
         self.file_text = file_text
@@ -170,17 +208,39 @@ class data_pipeline():
         summ_list = text_file.readlines()
         return summ_list
 
+def combine_summaries():
+    text_dir = os.listdir("Text Dataset")
+    summ_dir = os.listdir(text_dir[0])
+    path = os.path.join(text_dir[0], summ_dir[0])
+    with open(path, "r") as file:
+        summ_list = file.readlines()
+    
+    message = {"role": "user", "message": "This is a Summary for an SEC filing, use this summary to summarize the following text"}
 
 if __name__ == "__main__":
     #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
     # "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"
-    ticker_list = [ "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
-    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list]
-   # sentiment_summary = append_text_data(query_list[0], categories_10q)
-    # for query in query_list:
-    #     if query.get_ticker() != "TSLA" or  query.get_ticker() != "APPL":
-    #         write_to_file(query, categories_10q)
-    #         print(query.get_ticker()+" added")
+    #ticker_list = [ "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
+    with open("company_tickers.json") as json_file:
+        data = json.load(json_file)
+    
+    ticker_list = []
+    for key, value in data.items():
+       ticker_list.append(value['ticker'])
+
+    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list[69:]]
+    #text_listdir = [ticker[:-4] for ticker in text_listdir ]
+  # sentiment_summary = append_text_data(query_list[0], categories_10q)
+    for query in query_list:
+        text_listdir = os.listdir("Text Dataset")
+        if not (query.get_ticker() in text_listdir):
+            print(query.get_ticker(), " ", text_listdir)
+            try:
+                write_to_file(query, categories_10q)
+                print(query.get_ticker()+" added")
+            except:
+                print("Error got called on ", query.get_ticker())
+                pass
 
     input_size = 7  # Number of features in each input sequence
     hidden_size = 64  # Number of hidden units in the LSTM layer

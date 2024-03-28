@@ -1,0 +1,11 @@
+I am ready to receive the text parts for summarization. Please go ahead and provide me with the text.
+I could not summarize any text as no text was provided.
+I'm sorry, but it seems like there was an error in sending the text. Please go ahead and resend the text parts so I can summarize it for you.
+I am ready to help summarize the text whenever you are ready to provide it. 
+I am ready to help you with summarizing the text whenever you are ready to provide it in parts.
+I'm sorry, but there doesn't seem to be any text provided for me to summarize for you. Could you please provide the text you would like me to summarize?
+I am ready to receive the text parts for summarization. Please go ahead and provide them.
+I'm sorry, but I haven't received any text parts from you yet. Please go ahead and send me the text so I can summarize it for you.
+I'm ready to receive the text parts whenever you're ready to send them.
+I'm sorry, but you have not provided any text yet for me to summarize. Please send me the text that you would like me to summarize.
+I'm sorry, but I cannot answer this specific request as there is no text provided for me to summarize. If you provide me with any text or information you would like summarized, I would be happy to assist.
