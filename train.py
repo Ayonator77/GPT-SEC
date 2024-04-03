@@ -98,7 +98,7 @@ def stock_data(text_path):
                 final_path = os.path.join(key_path, key+str(file_index)+'.csv')
                 df.to_csv(final_path, index=False)
                 file_index += 1
-    #print(len(stock_data['AAPL']))
+
 
 
 def save_stock_data():

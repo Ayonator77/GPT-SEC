@@ -17,6 +17,11 @@ from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
 import torch.optim as optim
 import json
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+from sklearn.model_selection import train_test_split
+import re
+from nltk.corpus import stopwords
 
 #10-q items: [part1item1, part1item2, part1item3, part1item4, part2item1, part2item1a, part2item2, part2item3, part2item4, part2item5, part2item6]
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
@@ -163,50 +168,59 @@ def get_volatility(data_frame):
     volatility = data_frame['daily_returns'].std()
     return volatility
 
-def save_stock_data():
-    t_list = os.listdir("Text Dataset")
-    #dates = []
-    dataframe_list = []
-    stock_dict = {}
-    for tick in t_list:
-        stock_dict[tick] = os.listdir(os.path.join("Text Dataset", tick))
-        #dates.append(os.listdir(os.path.join("Text Dataset", tick)))
-    stock_dict  = {key: [datetime.strptime(filename[:-4], '%Y-%m-%d') for filename in filenames] for key, filenames in stock_dict.items()}
-    for key, dates in stock_dict.items():
-        for date in dates:
-            #print(date)
-            end_date = date +relativedelta(days=7)
+def stock_data(text_path):
+    t_list = os.listdir(text_path)
+    print(len(t_list))
+    stock_file = {}
+    stock_data = {}
+
+    for ticker in t_list:
+        stock_file[ticker] = os.listdir(os.path.join(text_path, ticker))
+    stock_file = {key: [datetime.strptime(filename[:-4 ], '%Y-%m-%d') for filename in filenames] for key, filenames in stock_file.items()}
+    #print(stock_file)
+    for key, data_list in stock_file.items():
+        df_list = []
+        for date in data_list:
+            end_date = date 
             date = date.strftime("%Y-%m-%d")
             end_date = end_date.strftime("%Y-%m-%d")
-            #print(date, end_date)
-            dataframe_list.append((key, get_stock_info(key, date, end_date)))
+            try:
+                df = get_stock_info(key, date, end_date)
+                df_list.append(df)
+            except:
+                print("Ran into exception")
+                pass
 
+        stock_data[key] = df_list
+    
     if not os.path.exists("Stock Dataset"):
         os.makedirs("Stock Dataset")
-    for key, data_frame in dataframe_list:
+
+    for key, df_list in stock_data.items():
+        key_path = os.path.join("Stock Dataset", key)
+        os.makedirs(key_path)
         file_index = 0
-        if 'timestamp' in data_frame.columns:
-            data_frame['timestamp']=data_frame['timestamp'].apply(lambda x: datetime.fromtimestamp(x/1000))
-            print(data_frame)
-            key_path = os.path.join("Stock Dataset", key)
-            os.makedirs(key_path, exist_ok=True)
-            final_path = os.path.join(key_path, key+'_'+str(file_index)+'.csv')
-            data_frame.to_csv(final_path, index=False)
-            file_index += 1
+        print("dataframe length: ",len(df_list))
+        if len(df_list) !=0:
+            for df in df_list:
+                final_path = os.path.join(key_path, key+str(file_index)+'.csv')
+                df.to_csv(final_path, index=False)
+                file_index += 1
 
 
+def preprocess_text(text):
+    tokens = word_tokenize(text)
+    tokens = [token.lower() for token in tokens]
+    tokens = [re.sub(r'[^a-zA-Z0-9]', '', token) for token in tokens if token.isalnum()]
+    stop_words=  set(stopwords.words('english'))
+    tokens = [token for token in tokens if token not in stop_words]
 
+    stemmer = PorterStemmer()
+    tokens = [stemmer.stem(token) for token in tokens]
 
-class data_pipeline():
-    def __init__(self, file_text, file_frame) -> None:
-        self.file_text = file_text
-        self.file_frame = file_frame
+    prepro_text = ' '.join(tokens)
+    return prepro_text
 
-    def extract_text(self, main_path="Text Dataset"):
-        path_list = os.listdir(main_path)
-        text_file = open(self.file_text, "r")
-        summ_list = text_file.readlines()
-        return summ_list
 
 def combine_summaries():
     text_dir = os.listdir("Text Dataset")
@@ -218,9 +232,7 @@ def combine_summaries():
     message = {"role": "user", "message": "This is a Summary for an SEC filing, use this summary to summarize the following text"}
 
 if __name__ == "__main__":
-    #data_set = create_stock_dataset("10-Q", "TSLA", "10", 0)
-    # "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"
-    #ticker_list = [ "TSLA", "AAPL", "MSFT", "META", "GOOGL","AMZN", "NVDA", "AMD", "COST", "NFLX","QCOM", "MCD", "TTE", "BABA", "IBM", "AMAT", "SHOP", "BP", "T", "REGN"]
+
     with open("company_tickers.json") as json_file:
         data = json.load(json_file)
     
@@ -228,7 +240,7 @@ if __name__ == "__main__":
     for key, value in data.items():
        ticker_list.append(value['ticker'])
 
-    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list[69:]]
+    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list[104:]]
     #text_listdir = [ticker[:-4] for ticker in text_listdir ]
   # sentiment_summary = append_text_data(query_list[0], categories_10q)
     for query in query_list:
@@ -248,8 +260,8 @@ if __name__ == "__main__":
     output_size = 1  # Dimensionality of the output (single value for predicting next day's return)
 
 
-    stock_data = create_stock_dataset(query_list[0], 9)[0]
-    print(stock_data)
+    # stock_data = create_stock_dataset(query_list[0], 9)[0]
+    # print(stock_data)
     # scaler = MinMaxScaler()
     # normalized_data = scaler.fit_transform(stock_data[['open', 'high', 'low', 'close', 'volume', 'vwap', 'transactions']])
     # print(stock_data)
