@@ -88,6 +88,10 @@ class LSTMModel(nn.Module):
         return output
 
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 class HybridModel(nn.Module):
     def __init__(self, transformer_model, lstm_model):
         super(HybridModel, self).__init__()
@@ -98,30 +102,20 @@ class HybridModel(nn.Module):
     def forward(self, transformer_input, lstm_input):
         transformer_output = self.transformer_model(transformer_input)
         lstm_output = self.lstm_model(lstm_input)  # Assuming LSTM returns only output
+        print("size: ",lstm_output.size())
+        # Reshape LSTM output to match the shape of the transformer output
+        transformer_batch_size = transformer_output.size(0)
+        transformer_seq_length = transformer_output.size(1)
+        lstm_batch_size = transformer_batch_size
+        # Reshape LSTM output to match Transformer output dimensions
+        lstm_batch_size = lstm_output.size(0)  # Get the batch size from the LSTM output
+        lstm_seq_length = 1  # Assuming LSTM output sequence length is 1
+        lstm_output = lstm_output.view(lstm_batch_size, 1, lstm_seq_length, -1)  # Adjust -1 based on the LSTM output size
 
-        # Repeat LSTM output to match the shape of transformer output
-
-        # Get the desired batch size (assuming it's the same as the transformer output)
-        desired_batch_size = transformer_output.size(0)
-
-        # Get the current batch size of the LSTM output
-        current_batch_size = lstm_output.size(0)
-
-        # Repeat or expand the LSTM output along the batch dimension to match the desired batch size
-        if current_batch_size < desired_batch_size:
-            repeated_lstm_output = lstm_output.repeat(desired_batch_size // current_batch_size, 1, 1)
-            remaining_samples = desired_batch_size % current_batch_size
-            if remaining_samples > 0:
-                repeated_lstm_output = torch.cat((repeated_lstm_output, lstm_output[:remaining_samples]), dim=0)
-        elif current_batch_size > desired_batch_size:
-            repeated_lstm_output = lstm_output[:desired_batch_size]
-        else:
-            repeated_lstm_output = lstm_output
-        repeated_lstm_output = repeated_lstm_output.unsqueeze(1)
-        print("Trans output and shape ",(transformer_output, transformer_output.shape), "Reshaped lstm output and shape", (repeated_lstm_output, repeated_lstm_output.shape))
+         # Adjust -1 based on the LSTM output size
 
         # Concatenate the outputs
-        combined_output = torch.cat((transformer_output, repeated_lstm_output), dim=2)
+        combined_output = torch.cat((transformer_output, lstm_output), dim=2)
 
         # Pass through fully connected layer
         output = self.fc(combined_output)
@@ -132,7 +126,6 @@ class HybridModel(nn.Module):
         return output
 
 
-    
 
 # print("Transformer output: ", transformer_output, "Size: ", transformer_output.shape)
 # print("LSTM Output: ", lstm_output, "size: ", lstm_output.shape)

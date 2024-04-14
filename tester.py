@@ -241,7 +241,7 @@ def foobar():
 
 
     # Hyperparameters
-    hidden_size = 50
+    hidden_size = 50 
     num_layers = 2
     num_classes = 3  # Three classes for 'buy', 'sell', 'neutral'
     num_epochs = 50
