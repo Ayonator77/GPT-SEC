@@ -116,7 +116,7 @@ def load_stock_data(main_path='Stock Dataset'):
                 # df.dropna(inplace=True)
                 stock_info.append(df)
             except:
-                print("Empty Dataframe")
+                print("Exception: Empty Dataframe")
         if stock_info:
             ds[ticker] = pd.concat(stock_info, ignore_index=True)
     return ds
@@ -254,7 +254,7 @@ def foobar():
     input_size = X_train.shape[1]
     lstm_model = CustomLSTM(input_size, hidden_size, num_layers, num_classes)
 
-    hybrid_model = HybridModel(transformer_model, lstm_model)
+    hybrid_model = HybridModel(transformer_model, lstm_model, 3)
     for epochs in range(num_epochs):
         for ticker, transformer_loader in transformer_data_loader.items():
             for trans_batch, lstm_batch in zip(transformer_loader, lstm_train_loader):
@@ -263,6 +263,8 @@ def foobar():
 
                 outputs = hybrid_model(trans_inputs, lstm_inputs)
                 print(outputs)
+
+
 
 def load_text_dict(main_path ="Text Dataset"):
     data_structure = {}
@@ -273,8 +275,10 @@ def load_text_dict(main_path ="Text Dataset"):
         current_dir = os.listdir(dir_string)
         for date in current_dir:
             date_dir = os.path.join(dir_string, date)
-            text = open(date_dir, "r").read().replace('\n', '')
-            text_info.append(text)
+            with open(date_dir, "r") as file:
+                text = file.read().replace('\n', '')
+                text_with_date = f"{date[:-4]} {text}"
+                text_info.append(text_with_date)
         data_structure[ticker] = text_info
     return data_structure
 

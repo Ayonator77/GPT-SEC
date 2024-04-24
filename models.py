@@ -93,39 +93,41 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class HybridModel(nn.Module):
-    def __init__(self, transformer_model, lstm_model):
+    def __init__(self, transformer_model, lstm_model, num_classes):
         super(HybridModel, self).__init__()
         self.transformer_model = transformer_model
         self.lstm_model = lstm_model
-        self.fc = nn.Linear(transformer_model.fc.in_features + lstm_model.fc.out_features, 3)  # Assuming 3 classes
+        self.fc = nn.Linear(transformer_model.fc.out_features + lstm_model.fc.out_features, num_classes)
 
-    def forward(self, transformer_input, lstm_input):
-        transformer_output = self.transformer_model(transformer_input)
-        lstm_output = self.lstm_model(lstm_input)  # Assuming LSTM returns only output
-        print("size: ",lstm_output.size())
-        # Reshape LSTM output to match the shape of the transformer output
-        transformer_batch_size = transformer_output.size(0)
-        transformer_seq_length = transformer_output.size(1)
-        lstm_batch_size = transformer_batch_size
-        # Reshape LSTM output to match Transformer output dimensions
-        lstm_batch_size = lstm_output.size(0)  # Get the batch size from the LSTM output
-        lstm_seq_length = 1  # Assuming LSTM output sequence length is 1
-        lstm_output = lstm_output.view(lstm_batch_size, 1, lstm_seq_length, -1)  # Adjust -1 based on the LSTM output size
+    def forward(self, x1, x2):
+        transformer_output = self.transformer_model(x1)
+        lstm_output = self.lstm_model(x2)
 
-         # Adjust -1 based on the LSTM output size
+        # Reduce the dimensionality of transformer_output to match the number of features in lstm_output
+        transformer_output_reduced = self.reduce_dimension(transformer_output)
 
-        # Concatenate the outputs
-        combined_output = torch.cat((transformer_output, lstm_output), dim=2)
+        # Replicate the reduced Transformer output to match the batch size of the LSTM output
+        transformer_output_replicated = transformer_output_reduced.unsqueeze(0).repeat(lstm_output.size(0), 1, 1)
 
-        # Pass through fully connected layer
+        # Concatenate the replicated Transformer output and LSTM output along the batch dimension
+        combined_output = torch.cat((transformer_output_replicated, lstm_output), dim=1)
+
+        # Pass through the fully connected layer
         output = self.fc(combined_output)
-
-        # Apply softmax activation
-        output = F.softmax(output, dim=2)
-
         return output
 
+    def reduce_dimension(self, x):
+        # Assuming you want to reduce dimensionality by taking the mean across the feature dimension
+        x = torch.mean(x, dim=1)  # Adjust this according to your reduction strategy
+        return x
 
+
+
+
+
+
+
+#print("transformer_output_replicated shape: ", transformer_output_replicated.shape," lstm_output shape: ", lstm_output.shape)
 
 # print("Transformer output: ", transformer_output, "Size: ", transformer_output.shape)
 # print("LSTM Output: ", lstm_output, "size: ", lstm_output.shape)
