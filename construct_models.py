@@ -180,6 +180,7 @@ def prepare_lstm_data(data_dict, test_size=0.2, validation_size=0.1):
         X_timestamp = np.array(data['timestamp'])
         #print("X timestamp", X_timestamp)
         X_features = data[['close', 'volatility']].values # features 
+        X_features = np.nan_to_num(X_features, nan=0.0)
         y = np.array(data['labels'].tolist()) #labels
 
         X_time_features = np.array([timestamp_to_features(str(ts)[:-3]) for ts in X_timestamp])
