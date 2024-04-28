@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from datetime import datetime
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.nn.utils.rnn import pad_sequence
 import pickle
 from transformers import AutoTokenizer, BertTokenizer
@@ -35,6 +35,7 @@ class TransformerModel(nn.Module):
         tgt_embedded = self.embedding(tgt)  # Placeholder for target sequence
         output = self.transformer(src_embedded, tgt_embedded)  # Pass both source and target sequences
         output = self.fc(output.mean(dim=1))  # Global average pooling
+        print("Transformer output shape: ", output.shape)
         return output
 
 
@@ -44,17 +45,36 @@ class LSTMModel(nn.Module):
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, output_size)
+        self.fc = nn.Linear(hidden_size, output_size) 
 
     def forward(self, x):
+        print("Lstm in shape: ",x.shape)
         batch_size = x.size(0)
         h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
         c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
         
         out, _ = self.lstm(x, (h0, c0))
         out = self.fc(out[:, -1, :])
+        print("Lstm output shape:  ", out.shape)
         return out
 
+class HybridModel(nn.Module):
+    def __init__(self, transformer_model, lstm_model, num_classes):
+        super(HybridModel, self).__init__()
+        self.transformer_model = transformer_model
+        self.lstm_model = lstm_model
+        self.fc = nn.Linear(transformer_model.fc.out_features + lstm_model.fc.out_features, num_classes)
+
+    def forward(self, transformer_input_ids, transformer_attention_mask, lstm_input):
+        transformer_output = self.transformer_model(transformer_input_ids, transformer_attention_mask)
+        lstm_output = self.lstm_model(lstm_input)
+        
+        # Concatenate outputs
+        combined_output = torch.cat((transformer_output, lstm_output), dim=1)
+
+        # Final classification layer
+        output = self.fc(F.relu(combined_output))
+        return output
 
 
 def train_lstm_model(model, train_data, val_data, num_epochs=10, learning_rate=0.001):
@@ -75,7 +95,7 @@ def train_lstm_model(model, train_data, val_data, num_epochs=10, learning_rate=0
             outputs = outputs.unsqueeze(0).repeat(labels.size(0), 1, 1)
             outputs = outputs.squeeze(1)
             outputs = torch.sigmoid(outputs)
-            print("Output shape:", outputs.shape, outputs) 
+            #print("Output shape:", outputs.shape, outputs) 
             # print("Labels shape:", labels.shape, labels)
             loss = criterion(outputs, labels)
             loss.backward()
@@ -87,31 +107,31 @@ def train_lstm_model(model, train_data, val_data, num_epochs=10, learning_rate=0
 
 
 
-def load_stock_data(main_path='Stock Dataset'):
-    ds = {}
-    ticker_list = os.listdir(main_path)
-    for ticker in ticker_list:
-        stock_info = []
-        dir_string = os.path.join(main_path, ticker)
-        dir = os.listdir(dir_string)
-        for df_info in dir:
-            df_dir = os.path.join(dir_string, df_info)
-            #print(df_dir)
-            try:
-                df = pd.read_csv(df_dir)
-                time_frame = 5
-                df['volatility'] = df['close'].pct_change(time_frame).rolling(time_frame).std()
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                buy_threshold =0.5
-                sell_threshold =0.5
-                #df['label'] = np.where(df['close'].shift(-1) > df['close'] + buy_threshold * df['volatility'], 'buy', np.where(df['close'].shift(-1) < df['close'] - sell_threshold * df['volatility'], 'sell', 'neutral'))
-                # df.dropna(inplace=True)
-                stock_info.append(df)
-            except:
-                print("Exception: Empty Dataframe")
-        if stock_info:
-            ds[ticker] = pd.concat(stock_info, ignore_index=True)
-    return ds
+# def load_stock_data(main_path='Stock Dataset'):
+#     ds = {}
+#     ticker_list = os.listdir(main_path)
+#     for ticker in ticker_list:
+#         stock_info = []
+#         dir_string = os.path.join(main_path, ticker)
+#         dir = os.listdir(dir_string)
+#         for df_info in dir:
+#             df_dir = os.path.join(dir_string, df_info)
+#             #print(df_dir)
+#             try:
+#                 df = pd.read_csv(df_dir)
+#                 time_frame = 5
+#                 df['volatility'] = df['close'].pct_change(time_frame).rolling(time_frame).std()
+#                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+#                 buy_threshold =0.5
+#                 sell_threshold =0.5
+#                 #df['label'] = np.where(df['close'].shift(-1) > df['close'] + buy_threshold * df['volatility'], 'buy', np.where(df['close'].shift(-1) < df['close'] - sell_threshold * df['volatility'], 'sell', 'neutral'))
+#                 # df.dropna(inplace=True)
+#                 stock_info.append(df)
+#             except:
+#                 print("Exception: Empty Dataframe")
+#         if stock_info:
+#             ds[ticker] = pd.concat(stock_info, ignore_index=True)
+#     return ds
 
 
 
@@ -175,6 +195,14 @@ def prepare_lstm_data(data_dict, test_size=0.2, validation_size=0.1):
         val_data.append((torch.tensor(X_val).float(), torch.tensor(y_val).float()))
     return train_data, test_data, val_data
 
+def lstm_train_loader(train_data, batch_size=64):
+    all_features = torch.cat([features for features, _ in train_data])
+    all_labels = torch.cat([labels for _, labels in train_data ])
+    dataset = TensorDataset(all_features, all_labels)
+
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    return data_loader
+
 
 def construct_dataframe(data_dict:dict):
     for ticker, data in data_dict.items():
@@ -196,6 +224,7 @@ def lstm_main():
     lstm_model = LSTMModel(input_size,hidden_size, num_layers, output_size)
     print(lstm_model)
     train_data, test_data, val_data = prepare_lstm_data(ds_stock)
+    print(train_data)
     lstm_model = train_lstm_model(lstm_model, train_data, val_data, 10, 0.001)
     return lstm_model
 
@@ -240,28 +269,28 @@ def assign_labels_to_text_data():
             labeled_text_data[ticker] = labeled_summaries
     return labeled_text_data
 
-class TextDataset(Dataset):
-    def __init__(self, data_dict, tokenizer, max_length):
-        self.data_dict = data_dict
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-        self.pad_token_id = tokenizer.pad_token_id
+# class TextDataset(Dataset):
+#     def __init__(self, data_dict, tokenizer, max_length):
+#         self.data_dict = data_dict
+#         self.tokenizer = tokenizer
+#         self.max_length = max_length
+#         self.pad_token_id = tokenizer.pad_token_id
 
-    def __len__(self):
-        return len(self.data_dict)
+#     def __len__(self):
+#         return len(self.data_dict)
     
-    def __getitem__(self, idx):
-        ticker = list(self.data_dict.keys())[idx]
-        summaries = self.data_dict[ticker]
-        tokenized_summaries = [self.tokenizer.encode(summary, add_special_tokens=True, max_length=self.max_length, truncation=True) for summary in summaries]
-        padded_summaries = [self.pad_sequence(summary) for summary in tokenized_summaries]
-        return torch.tensor(padded_summaries), ticker
+#     def __getitem__(self, idx):
+#         ticker = list(self.data_dict.keys())[idx]
+#         summaries = self.data_dict[ticker]
+#         tokenized_summaries = [self.tokenizer.encode(summary, add_special_tokens=True, max_length=self.max_length, truncation=True) for summary in summaries]
+#         padded_summaries = [self.pad_sequence(summary) for summary in tokenized_summaries]
+#         return torch.tensor(padded_summaries), ticker
     
-def preprocess_text_data(data_dict, tokeninzer, max_length):
-    dataset = TextDataset(data_dict, tokeninzer, max_length)
-    return dataset
+# def preprocess_text_data(data_dict, tokeninzer, max_length):
+#     dataset = TextDataset(data_dict, tokeninzer, max_length)
+#     return dataset
 
-def prerpo_text_data(data):
+def preprocess_text_data(data):
     preprocessed_data = []
     max_seq_length = 0
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
@@ -339,7 +368,7 @@ def train_transformer(model, train_loader, num_epochs=10, learning_rate=1e-3):
 
 def transformer_main():
     ds = assign_labels_to_text_data()
-    prepro_data, max_seq_length = prerpo_text_data(ds)
+    prepro_data, max_seq_length = preprocess_text_data(ds)
     dataset = TextDataset_(prepro_data)
     data_loader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
     model_name = "bert-base-uncased"
@@ -352,30 +381,134 @@ def transformer_main():
     num_classes = 3  # Number of classes for classification
     model = TransformerModel(vocab_size, embedding_dim, num_heads, hidden_dim, num_layers, num_classes, max_seq_length)
     train_data, test_val_data = train_test_split(prepro_data, test_size=0.2, random_state=42)
+    print(type(train_data))
     val_data, test_data = train_test_split(test_val_data, test_size=0.5, random_state=42)
     train_loader = DataLoader(TextDataset_(train_data), batch_size=64, shuffle=True, collate_fn=collate_fn)
     
     train_transformer(model, train_loader)
 
+
+
+def batch_data(data, batch_size):
+    """Yield successive n-sized chunks from data."""
+    for i in range(0, len(data), batch_size):
+        yield data[i:i + batch_size]
+
+def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
+    lstm_data_iter = iter(lstm_data)
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(hybrid_model.parameters(), lr=0.001)
+
+    # for epoch in range(num_epochs):
+    #     for transformer_batch in transformer_loader:
+    #         transformer_inputs, t_labels, _ = transformer_batch
+    #         transfromer_input_ids = transformer_inputs['input_ids']
+    #         transformer_attention_mask = transformer_inputs['attention_mask']
+
+    #         lstm_features, lstm_labels = [], []
+
+    #         for _ in range(lstm_bach_size):
+    #             try:
+    #                 features, labels = next(lstm_data_iter)
+    #                 lstm_features.append(features)
+    #                 lstm_labels.append(labels)
+    #             except StopIteration:
+    #                 lstm_data_iter = iter(lstm_data)
+    #                 features, labels = next(lstm_data_iter)
+    #                 lstm_features.append(features)
+    #                 lstm_labels.append(labels)
+            
+    #         # if lstm_features and isinstance(lstm_features[0], torch.Tensor):
+    #         #     lstm_batch = torch.stack(lstm_features)
+    #         # else:
+    #         #     raise ValueError("LSTM features not tensors")
+
+    #         lstm_batch = pad_sequence(lstm_features)
+
+    #         hybrid_outputs = hybrid_model(transfromer_input_ids, transformer_attention_mask, lstm_batch)
+    #         print(hybrid_outputs)
+
+    #         loss = criterion(hybrid_outputs, labels)
+
+    #         optimizer.zero_grad()
+    #         loss.backward()
+    #         optimizer.step()
+    for epoch in range(num_epochs):
+        for (transformer_batch, lstm_batch) in zip(transformer_loader, lstm_data):
+            transformer_inputs, transformer_labels, _ = transformer_batch
+            transformer_input_ids, transformer_attention_mask = transformer_inputs['input_ids'], transformer_inputs['attention_mask']
+            lstm_inputs, lstm_labels = lstm_batch
+            
+            lstm_inputs = lstm_inputs.unsqueeze(1)
+
+            optimizer.zero_grad()
+
+            outputs = hybrid_model(transformer_input_ids, transformer_attention_mask, lstm_inputs)
+            print(outputs)
+            loss = criterion(outputs, lstm_labels)
+
+            loss.backward()
+
+            optimizer.step()
+        print(f'Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}')
+
+def pad_sequences(sequences, max_len=None, padding_value=0):
+    """Pad a list of tensors to the same length with padding_value."""
+    batch_size = len(sequences)
+    if not max_len:
+        max_len = max([s.size(0) for s in sequences])
+    
+    padded_sequences = torch.full((batch_size, max_len, sequences[0].shape[1]), padding_value)
+    for i, sequence in enumerate(sequences):
+        end = min(max_len, sequence.size(0))
+        padded_sequences[i, :end] = sequence[:end]
+    return padded_sequences
+
 if __name__ == '__main__':
     ds = assign_labels_to_text_data()
+    ds_stock = load_stock_binary()
 
-    prepro_data, max_seq_length = prerpo_text_data(ds)
-    dataset = TextDataset_(prepro_data)
-    data_loader = DataLoader(dataset, batch_size=64, shuffle=True, collate_fn=collate_fn)
+    train_data, test_data, val_data = prepare_lstm_data(ds_stock)
+    train_data_loader = lstm_train_loader(train_data)
+    # for lstm_inputs, lstm_outputs in train_data_loader:
+    #     print(lstm_inputs, lstm_outputs)
+    # features_padded = pad_sequence(features, batch_first=True, padding_value=0) 
+    # features_tensor = features_padded
+    # lstm_loader = DataLoader(lstm_dataset, batch_size=64, shuffle=False)
+    # for batch in lstm_loader:
+    #     feat, lab = batch
+    #     print(feat, lab)
+
+
+    prepro_data, max_seq_length = preprocess_text_data(ds)
+    train_data_transformer, test_val_data = train_test_split(prepro_data, test_size=0.2, random_state=42)
+    dataset = TextDataset_(train_data_transformer)
+    train_loader_tranformer = DataLoader(dataset, batch_size=64, shuffle=False, collate_fn=collate_fn)
+
+    #define lstm model
+    input_size = 5
+    hidden_size = 128
+    num_layers = 2
+    output_size = 3
+    lstm_model = LSTMModel(input_size,hidden_size, num_layers, output_size)
+
+
+    #define transformer model
     model_name = "bert-base-uncased"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     vocab_size = tokenizer.vocab_size
-    embedding_dim = 256
+    embedding_dim = 128
     num_heads = 8
     hidden_dim = 512
-    num_layers = 6
+    num_layers_t = 6
     num_classes = 3  # Number of classes for classification
-    model = TransformerModel(vocab_size, embedding_dim, num_heads, hidden_dim, num_layers, num_classes, max_seq_length)
-    train_transformer(model, data_loader)
-    # model.eval()
-    # with torch.no_grad():
-    #     for tokenized_summaries, labels, dates in data_loader:
-    #         outputs = model(tokenized_summaries['input_ids'], tokenized_summaries['input_ids'])
-    #         print(outputs, labels)
-    #lstm_main()
+    transformer_model = TransformerModel(vocab_size, embedding_dim, num_heads, hidden_dim, num_layers_t, num_classes, max_seq_length)
+
+
+    #define hybrid model
+    hybrid_model = HybridModel(transformer_model, lstm_model, num_classes)
+
+    #train hybrid model
+    train_hybrid_model(train_loader_tranformer, train_data_loader, hybrid_model, 50)
+
+
