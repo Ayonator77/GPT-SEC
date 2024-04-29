@@ -389,7 +389,7 @@ def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
             optimizer.zero_grad()
 
             outputs = hybrid_model(transformer_input_ids, transformer_attention_mask, lstm_inputs)
-            print(outputs)
+           # print(outputs)
 
             loss = criterion(outputs, lstm_labels)
             total_loss += loss.item()
