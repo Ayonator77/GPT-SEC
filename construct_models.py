@@ -15,6 +15,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pickle
 from transformers import AutoTokenizer, BertTokenizer
 from torchtext.data.utils import get_tokenizer
+import matplotlib.pyplot as plt
 
 class TransformerModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim, num_heads, hidden_dim, num_layers, num_classes, max_seq_length):
@@ -373,7 +374,11 @@ def transformer_main():
 def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(hybrid_model.parameters(), lr=0.001)
+    epoch_losses = []
     for epoch in range(num_epochs):
+        hybrid_model.train()
+        total_loss = 0
+        count_batches = 0
         for (transformer_batch, lstm_batch) in zip(transformer_loader, lstm_data):
             transformer_inputs, transformer_labels, _ = transformer_batch
             transformer_input_ids, transformer_attention_mask = transformer_inputs['input_ids'], transformer_inputs['attention_mask']
@@ -385,12 +390,28 @@ def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
 
             outputs = hybrid_model(transformer_input_ids, transformer_attention_mask, lstm_inputs)
             print(outputs)
-            loss = criterion(outputs, lstm_labels)
 
+            loss = criterion(outputs, lstm_labels)
+            total_loss += loss.item()
+            count_batches +=1
             loss.backward()
 
             optimizer.step()
+        average_loss = total_loss/count_batches
+        epoch_losses.append(average_loss)
         print(f'Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}')
+    print("training complete")
+    return epoch_losses
+
+def plot_loss(epoch_losses):
+    plt.figure(figsize=(10, 5))
+    plt.plot(epoch_losses, label='Training Loss')
+    plt.title('Loss During Training')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -430,6 +451,7 @@ if __name__ == '__main__':
     hybrid_model = HybridModel(transformer_model, lstm_model, num_classes)
 
     #train hybrid model
-    train_hybrid_model(train_loader_tranformer, train_data_loader, hybrid_model, 50)
+    loss_plot = train_hybrid_model(train_loader_tranformer, train_data_loader, hybrid_model, 50)
+    plot_loss(loss_plot)
 
 
