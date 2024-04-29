@@ -270,26 +270,6 @@ def assign_labels_to_text_data():
             labeled_text_data[ticker] = labeled_summaries
     return labeled_text_data
 
-# class TextDataset(Dataset):
-#     def __init__(self, data_dict, tokenizer, max_length):
-#         self.data_dict = data_dict
-#         self.tokenizer = tokenizer
-#         self.max_length = max_length
-#         self.pad_token_id = tokenizer.pad_token_id
-
-#     def __len__(self):
-#         return len(self.data_dict)
-    
-#     def __getitem__(self, idx):
-#         ticker = list(self.data_dict.keys())[idx]
-#         summaries = self.data_dict[ticker]
-#         tokenized_summaries = [self.tokenizer.encode(summary, add_special_tokens=True, max_length=self.max_length, truncation=True) for summary in summaries]
-#         padded_summaries = [self.pad_sequence(summary) for summary in tokenized_summaries]
-#         return torch.tensor(padded_summaries), ticker
-    
-# def preprocess_text_data(data_dict, tokeninzer, max_length):
-#     dataset = TextDataset(data_dict, tokeninzer, max_length)
-#     return dataset
 
 def preprocess_text_data(data):
     preprocessed_data = []
@@ -390,50 +370,9 @@ def transformer_main():
 
 
 
-def batch_data(data, batch_size):
-    """Yield successive n-sized chunks from data."""
-    for i in range(0, len(data), batch_size):
-        yield data[i:i + batch_size]
-
 def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
-    lstm_data_iter = iter(lstm_data)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(hybrid_model.parameters(), lr=0.001)
-
-    # for epoch in range(num_epochs):
-    #     for transformer_batch in transformer_loader:
-    #         transformer_inputs, t_labels, _ = transformer_batch
-    #         transfromer_input_ids = transformer_inputs['input_ids']
-    #         transformer_attention_mask = transformer_inputs['attention_mask']
-
-    #         lstm_features, lstm_labels = [], []
-
-    #         for _ in range(lstm_bach_size):
-    #             try:
-    #                 features, labels = next(lstm_data_iter)
-    #                 lstm_features.append(features)
-    #                 lstm_labels.append(labels)
-    #             except StopIteration:
-    #                 lstm_data_iter = iter(lstm_data)
-    #                 features, labels = next(lstm_data_iter)
-    #                 lstm_features.append(features)
-    #                 lstm_labels.append(labels)
-            
-    #         # if lstm_features and isinstance(lstm_features[0], torch.Tensor):
-    #         #     lstm_batch = torch.stack(lstm_features)
-    #         # else:
-    #         #     raise ValueError("LSTM features not tensors")
-
-    #         lstm_batch = pad_sequence(lstm_features)
-
-    #         hybrid_outputs = hybrid_model(transfromer_input_ids, transformer_attention_mask, lstm_batch)
-    #         print(hybrid_outputs)
-
-    #         loss = criterion(hybrid_outputs, labels)
-
-    #         optimizer.zero_grad()
-    #         loss.backward()
-    #         optimizer.step()
     for epoch in range(num_epochs):
         for (transformer_batch, lstm_batch) in zip(transformer_loader, lstm_data):
             transformer_inputs, transformer_labels, _ = transformer_batch
@@ -453,17 +392,6 @@ def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
             optimizer.step()
         print(f'Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}')
 
-def pad_sequences(sequences, max_len=None, padding_value=0):
-    """Pad a list of tensors to the same length with padding_value."""
-    batch_size = len(sequences)
-    if not max_len:
-        max_len = max([s.size(0) for s in sequences])
-    
-    padded_sequences = torch.full((batch_size, max_len, sequences[0].shape[1]), padding_value)
-    for i, sequence in enumerate(sequences):
-        end = min(max_len, sequence.size(0))
-        padded_sequences[i, :end] = sequence[:end]
-    return padded_sequences
 
 if __name__ == '__main__':
     ds = assign_labels_to_text_data()
@@ -471,14 +399,6 @@ if __name__ == '__main__':
 
     train_data, test_data, val_data = prepare_lstm_data(ds_stock)
     train_data_loader = lstm_train_loader(train_data)
-    # for lstm_inputs, lstm_outputs in train_data_loader:
-    #     print(lstm_inputs, lstm_outputs)
-    # features_padded = pad_sequence(features, batch_first=True, padding_value=0) 
-    # features_tensor = features_padded
-    # lstm_loader = DataLoader(lstm_dataset, batch_size=64, shuffle=False)
-    # for batch in lstm_loader:
-    #     feat, lab = batch
-    #     print(feat, lab)
 
 
     prepro_data, max_seq_length = preprocess_text_data(ds)
