@@ -14,8 +14,9 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torch.nn.utils.rnn import pad_sequence
 import pickle
 from transformers import AutoTokenizer, BertTokenizer
-from torchtext.data.utils import get_tokenizer
+from sklearn.metrics import roc_auc_score
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import label_binarize
 
 class TransformerModel(nn.Module):
     def __init__(self, vocab_size, embedding_dim, num_heads, hidden_dim, num_layers, num_classes, max_seq_length):
@@ -36,7 +37,7 @@ class TransformerModel(nn.Module):
         tgt_embedded = self.embedding(tgt)  # Placeholder for target sequence
         output = self.transformer(src_embedded, tgt_embedded)  # Pass both source and target sequences
         output = self.fc(output.mean(dim=1))  # Global average pooling
-        print("Transformer output shape: ", output.shape)
+        #print("Transformer output shape: ", output.shape)
         return output
 
 
@@ -49,14 +50,14 @@ class LSTMModel(nn.Module):
         self.fc = nn.Linear(hidden_size, output_size) 
 
     def forward(self, x):
-        print("Lstm in shape: ",x.shape)
+        # print("Lstm in shape: ",x.shape)
         batch_size = x.size(0)
         h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
         c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size).to(x.device)
         
         out, _ = self.lstm(x, (h0, c0))
         out = self.fc(out[:, -1, :])
-        print("Lstm output shape:  ", out.shape)
+        #print("Lstm output shape:  ", out.shape)
         return out
 
 class HybridModel(nn.Module):
@@ -69,9 +70,11 @@ class HybridModel(nn.Module):
     def forward(self, transformer_input_ids, transformer_attention_mask, lstm_input):
         transformer_output = self.transformer_model(transformer_input_ids, transformer_attention_mask)
         lstm_output = self.lstm_model(lstm_input)
-        
-        # Concatenate outputs
-        combined_output = torch.cat((transformer_output, lstm_output), dim=1)
+        min_batch_size = min(transformer_output.size(0), lstm_output.size(0))
+        # print(f'Transformer output shape: {transformer_output.shape}')  # Debugging output shapes
+        # print(f'LSTM output shape: {lstm_output.shape}') 
+        # # Concatenate outputs
+        combined_output = torch.cat((transformer_output[:min_batch_size], lstm_output[:min_batch_size]), dim=1)
 
         # Final classification layer
         output = self.fc(F.relu(combined_output))
@@ -104,36 +107,6 @@ def train_lstm_model(model, train_data, val_data, num_epochs=10, learning_rate=0
             train_loss += loss.item()
         print("Train Loss: ", train_loss,' epoch: ', epoch, '\n')
     return model
-
-
-
-
-# def load_stock_data(main_path='Stock Dataset'):
-#     ds = {}
-#     ticker_list = os.listdir(main_path)
-#     for ticker in ticker_list:
-#         stock_info = []
-#         dir_string = os.path.join(main_path, ticker)
-#         dir = os.listdir(dir_string)
-#         for df_info in dir:
-#             df_dir = os.path.join(dir_string, df_info)
-#             #print(df_dir)
-#             try:
-#                 df = pd.read_csv(df_dir)
-#                 time_frame = 5
-#                 df['volatility'] = df['close'].pct_change(time_frame).rolling(time_frame).std()
-#                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-#                 buy_threshold =0.5
-#                 sell_threshold =0.5
-#                 #df['label'] = np.where(df['close'].shift(-1) > df['close'] + buy_threshold * df['volatility'], 'buy', np.where(df['close'].shift(-1) < df['close'] - sell_threshold * df['volatility'], 'sell', 'neutral'))
-#                 # df.dropna(inplace=True)
-#                 stock_info.append(df)
-#             except:
-#                 print("Exception: Empty Dataframe")
-#         if stock_info:
-#             ds[ticker] = pd.concat(stock_info, ignore_index=True)
-#     return ds
-
 
 
 def generate_labels(data, volatility_window=5, buy_threshold=0.5, sell_threshold=0.5):
@@ -202,7 +175,7 @@ def lstm_train_loader(train_data, batch_size=64):
     all_labels = torch.cat([labels for _, labels in train_data ])
     dataset = TensorDataset(all_features, all_labels)
 
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=False, drop_last=True)
     return data_loader
 
 
@@ -236,18 +209,6 @@ def load_stock_binary(file_path = 'preprocessed_stock_data.pkl'):
         dataframe = pickle.load(f)
     return dataframe
 
-
-def text_labels():
-    ds_stock = load_stock_binary()
-    ds = load_text_dict()
-
-    for ticker_, text_data in ds.items():
-        if ticker_ in ds_stock.keys():
-            stock_data = ds_stock[ticker_]
-            for summ in text_data:
-                print(stock_data['date'], " summary date\n ", summ[0:10])
-                label = stock_data.loc[stock_data['date'] == summ[0:10], 'labels']
-                #print(label)
     
 def assign_labels_to_text_data():
     time_series_data = load_stock_binary()
@@ -372,9 +333,12 @@ def transformer_main():
 
 
 def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(hybrid_model.parameters(), lr=0.001)
     epoch_losses = []
+    hybrid_model.to(device)
     for epoch in range(num_epochs):
         hybrid_model.train()
         total_loss = 0
@@ -382,14 +346,17 @@ def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
         for (transformer_batch, lstm_batch) in zip(transformer_loader, lstm_data):
             transformer_inputs, transformer_labels, _ = transformer_batch
             transformer_input_ids, transformer_attention_mask = transformer_inputs['input_ids'], transformer_inputs['attention_mask']
+            transformer_input_ids = transformer_input_ids.to(device)
+            transformer_attention_mask = transformer_attention_mask.to(device)
+
             lstm_inputs, lstm_labels = lstm_batch
             
-            lstm_inputs = lstm_inputs.unsqueeze(1)
+            lstm_inputs = lstm_inputs.to(device).unsqueeze(1)
+            lstm_labels = lstm_labels.to(device)
 
             optimizer.zero_grad()
 
             outputs = hybrid_model(transformer_input_ids, transformer_attention_mask, lstm_inputs)
-           # print(outputs)
 
             loss = criterion(outputs, lstm_labels)
             total_loss += loss.item()
@@ -400,8 +367,63 @@ def train_hybrid_model(transformer_loader, lstm_data, hybrid_model, num_epochs):
         average_loss = total_loss/count_batches
         epoch_losses.append(average_loss)
         print(f'Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}')
+    torch.save(hybrid_model, 'hybrid_model.pth')
     print("training complete")
     return epoch_losses
+
+def evaluate_hybrid_model(test_transformer_loader, test_lstm_loader, hybrid_model, criterion, device):
+    hybrid_model.eval()  # Set the model to evaluation mode
+    total_loss = 0.0
+    correct_predictions = 0
+    total_samples = 0
+    all_labels = []
+    all_predictions = []
+
+    with torch.no_grad():  # No need to track gradients for validation
+        for (transformer_batch, lstm_batch) in zip(test_transformer_loader, test_lstm_loader):
+            transformer_inputs, transformer_labels, _ = transformer_batch
+            transformer_input_ids, transformer_attention_mask = transformer_inputs['input_ids'], transformer_inputs['attention_mask']
+            #print(hybrid_model.transformer_model(transformer_input_ids, transformer_attention_mask).shape)
+
+            # if hybrid_model.transformer_model(transformer_input_ids, transformer_attention_mask).shape == torch.Size([64, 3]):
+            lstm_inputs, lstm_labels = lstm_batch
+
+            # Ensure everything is on the correct device
+            transformer_input_ids = transformer_input_ids.to(device)
+            transformer_attention_mask = transformer_attention_mask.to(device)
+            lstm_inputs = lstm_inputs.to(device).unsqueeze(1)  # Add sequence length dimension
+            labels = lstm_labels.to(device)  # Assuming labels are the same for both parts
+
+            # Forward pass
+            outputs = hybrid_model(transformer_input_ids, transformer_attention_mask, lstm_inputs)
+            
+            # Compute loss
+            loss = criterion(outputs, labels[:outputs.size(0)])
+            print("labels shape",labels.shape)
+            total_loss += loss.item() * labels.size(0)  # Total loss for average later
+
+            all_labels.append(labels.cpu())
+            all_predictions.append(outputs.cpu())
+
+            # Compute accuracy
+            _, predicted = torch.max(outputs, 1)
+            correct_predictions += (predicted == labels[:outputs.size(0)].max(dim=1)[1]).sum().item()
+            total_samples += labels.size(0)
+            print("Avg loss: ", total_loss/total_samples)
+
+    all_labels = torch.cat(all_labels).numpy()
+    all_predictions = torch.cat(all_predictions).numpy()
+    all_labels = label_binarize(all_labels, classes=np.arange(3))
+    if len(np.unique(all_labels)) > 1:  # Ensure there's more than one class
+        all_labels = label_binarize(all_labels, classes=np.arange(3))
+        auc_scores = roc_auc_score(all_labels, all_predictions, multi_class='ovr', average='macro')
+    else:
+        auc_scores = float('nan')   
+    #auc_scores = roc_auc_score(all_labels, all_predictions, multi_class='ovr', average='macro')
+
+    avg_loss = total_loss / total_samples
+    accuracy = correct_predictions / total_samples * 100
+    return avg_loss, accuracy, auc_scores
 
 def plot_loss(epoch_losses):
     plt.figure(figsize=(10, 5))
@@ -420,12 +442,16 @@ if __name__ == '__main__':
 
     train_data, test_data, val_data = prepare_lstm_data(ds_stock)
     train_data_loader = lstm_train_loader(train_data)
+    test_data_loader = lstm_train_loader(test_data)
+    val_data_loader  = lstm_train_loader(val_data)
 
 
     prepro_data, max_seq_length = preprocess_text_data(ds)
     train_data_transformer, test_val_data = train_test_split(prepro_data, test_size=0.2, random_state=42)
     dataset = TextDataset_(train_data_transformer)
     train_loader_tranformer = DataLoader(dataset, batch_size=64, shuffle=False, collate_fn=collate_fn)
+    test_val_dataset  = TextDataset_(test_val_data)
+    test_val_loader = DataLoader(test_val_dataset, batch_size=64, shuffle=False, collate_fn=collate_fn)
 
     #define lstm model
     input_size = 5
@@ -451,7 +477,13 @@ if __name__ == '__main__':
     hybrid_model = HybridModel(transformer_model, lstm_model, num_classes)
 
     #train hybrid model
-    loss_plot = train_hybrid_model(train_loader_tranformer, train_data_loader, hybrid_model, 50)
-    plot_loss(loss_plot)
+    # loss_plot = train_hybrid_model(train_loader_tranformer, train_data_loader, hybrid_model, 50)
+    # plot_loss(loss_plot)
+    trained_model = torch.load('hybrid_model.pth')
+    criterion = nn.CrossEntropyLoss()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    val_loss, val_accuracy, auc_score = evaluate_hybrid_model(test_val_loader, val_data_loader, trained_model, criterion, device)
+    print("Hybrid Accuracy", val_accuracy)
+    print("AUC: ", auc_score )
 
 
