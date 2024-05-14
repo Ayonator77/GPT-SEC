@@ -8,7 +8,7 @@ from polygon import RESTClient
 import pandas as pd
 import tiktoken
 
-client = RESTClient(api_key="Xc1zDaoNh92eQpKQZM3TDpAMyNIN87k_")
+client = RESTClient(api_key="")
 finbert = BertForSequenceClassification.from_pretrained('yiyanghkust/finbert-tone',num_labels=3)
 tokenizer = BertTokenizer.from_pretrained('yiyanghkust/finbert-tone')
 categories_10k = ["1","1A", "1B", "2", "3", "4", "5", "6", "7", "7A", "8", "9", "9A", "9B", "10", "11", "12", "13", "14", "15"]
