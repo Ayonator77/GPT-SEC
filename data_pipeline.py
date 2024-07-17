@@ -240,7 +240,7 @@ if __name__ == "__main__":
     for key, value in data.items():
        ticker_list.append(value['ticker'])
 
-    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list[104:]]
+    query_list = [SEC_QUERY("10-Q", ticker, "10") for ticker in ticker_list[151:]]
     #text_listdir = [ticker[:-4] for ticker in text_listdir ]
   # sentiment_summary = append_text_data(query_list[0], categories_10q)
     for query in query_list:
