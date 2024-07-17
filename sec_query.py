@@ -2,8 +2,8 @@ from sec_api import QueryApi, ExtractorApi
 import json
 import requests
 
-queryAPI = QueryApi(api_key='7a4dda8c39c6e24c806d4ae6e949dc560310aa8df111ed9e649ad978d18fbe7e')
-extractorApi = ExtractorApi(api_key='7a4dda8c39c6e24c806d4ae6e949dc560310aa8df111ed9e649ad978d18fbe7e')
+queryAPI = QueryApi(api_key='')
+extractorApi = ExtractorApi(api_key='')
 class SEC_QUERY:
     """
     Create class structure for EDGAR API query
